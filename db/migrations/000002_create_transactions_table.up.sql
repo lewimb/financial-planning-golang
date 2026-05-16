@@ -1,0 +1,12 @@
+CREATE TABLE IF NOT EXISTS TRANSACTIONS (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    amount DECIMAL(10, 2) NOT NULL,
+    category VARCHAR(255) NOT NULL,
+    type VARCHAR(10) NOT NULL CHECK (type in ('INCOME','EXPENSE')),
+    date DATE NOT NULL,
+    description TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    deleted_at TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+)
