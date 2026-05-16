@@ -1,0 +1,928 @@
+openapi: 3.0.3
+info:
+  title: Financial Planning API
+  version: 1.0.0
+  description: REST API for the Financial Planning backend (Go/Gin).
+
+servers:
+  - url: http://localhost:8080
+    description: Local dev
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: accessToken
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+
+    MessageResponse:
+      type: object
+      properties:
+        message:
+          type: string
+
+    # ── Auth ──────────────────────────────────────────────────────────────────
+    RegisterRequest:
+      type: object
+      required: [email, password, name]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+        name:
+          type: string
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+
+    LoginResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        status:
+          type: string
+        data:
+          type: object
+          properties:
+            token:
+              type: string
+
+    UserResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+        email:
+          type: string
+        name:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        deleted_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    # ── Transactions ──────────────────────────────────────────────────────────
+    TransactionRequest:
+      type: object
+      properties:
+        amount:
+          type: integer
+        category:
+          type: string
+        type:
+          type: string
+          description: INCOME or EXPENSE (uppercased server-side)
+        date:
+          type: string
+          format: date-time
+        description:
+          type: string
+
+    TransactionResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+        amount:
+          type: number
+          format: float
+        category:
+          type: string
+        type:
+          type: string
+        date:
+          type: string
+          format: date-time
+        description:
+          type: string
+
+    TransactionListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransactionResponse'
+        total:
+          type: integer
+          description: Total pages
+
+    TransactionCountResponse:
+      type: object
+      properties:
+        total:
+          description: Aggregated value for the current month
+        message:
+          type: string
+
+    # ── Budgets ───────────────────────────────────────────────────────────────
+    CreateBudgetRequest:
+      type: object
+      required: [category, period, year, limit_amount]
+      properties:
+        category:
+          type: string
+        period:
+          type: string
+          enum: [MONTHLY, YEARLY]
+        month:
+          type: integer
+          nullable: true
+          description: Required when period is MONTHLY
+        year:
+          type: integer
+        limit_amount:
+          type: integer
+        alert_threshold:
+          type: integer
+          default: 80
+          description: Percentage threshold for alerts
+
+    UpdateBudgetRequest:
+      type: object
+      required: [limitAmount]
+      properties:
+        limitAmount:
+          type: integer
+        alertThreshold:
+          type: integer
+        category:
+          type: string
+
+    BudgetResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        category:
+          type: string
+        period:
+          type: string
+        month:
+          type: integer
+          nullable: true
+        year:
+          type: integer
+        limitAmount:
+          type: integer
+        alertThreshold:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+
+    BudgetUsageResponse:
+      type: object
+      properties:
+        budget_id:
+          type: integer
+        category:
+          type: string
+        period:
+          type: string
+        limit:
+          type: integer
+        alert_threshold:
+          type: integer
+        used:
+          type: integer
+        remaining:
+          type: integer
+        percentage:
+          type: number
+          format: float
+        status:
+          type: string
+        change_percent:
+          type: number
+          format: float
+
+    # ── Goals ─────────────────────────────────────────────────────────────────
+    CreateGoalRequest:
+      type: object
+      required: [name, target_amount, deadline]
+      properties:
+        name:
+          type: string
+        target_amount:
+          type: integer
+        description:
+          type: string
+        deadline:
+          type: string
+          format: date-time
+
+    GoalResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        target_amount:
+          type: integer
+        current_amount:
+          type: integer
+        status:
+          type: string
+        deadline:
+          type: string
+          format: date-time
+        description:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    GoalOverviewResponse:
+      type: object
+      properties:
+        total_goals:
+          type: integer
+        savings:
+          type: integer
+        goals:
+          type: array
+          items:
+            $ref: '#/components/schemas/GoalResponse'
+
+    GoalContributionRequest:
+      type: object
+      required: [goal_id, contribution]
+      properties:
+        goal_id:
+          type: integer
+        contribution:
+          type: integer
+
+paths:
+  # ── Auth ────────────────────────────────────────────────────────────────────
+  /api/v1/register:
+    post:
+      tags: [Auth]
+      summary: Register a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '200':
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: User already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/login:
+    post:
+      tags: [Auth]
+      summary: Login and receive JWT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful — JWT set in `accessToken` cookie
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          description: Invalid credentials or input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Login failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/users:
+    get:
+      tags: [Auth]
+      summary: Get all users
+      responses:
+        '200':
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/UserResponse'
+                  status:
+                    type: string
+                  message:
+                    type: string
+
+  # ── Transactions ─────────────────────────────────────────────────────────────
+  /api/auth/v1/transactions/users:
+    get:
+      tags: [Transactions]
+      summary: Get transactions for the authenticated user
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: month
+          in: query
+          schema:
+            type: string
+          description: Filter by month (e.g. "01"–"12")
+        - name: year
+          in: query
+          schema:
+            type: string
+          description: Filter by year (e.g. "2024")
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Paginated transaction list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionListResponse'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/auth/v1/transactions/:
+    post:
+      tags: [Transactions]
+      summary: Create a transaction
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransactionRequest'
+      responses:
+        '200':
+          description: Transaction created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/auth/v1/transactions/count:
+    get:
+      tags: [Transactions]
+      summary: Get transaction totals for the current month
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Monthly transaction count/total
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionCountResponse'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/auth/v1/transactions/{id}:
+    put:
+      tags: [Transactions]
+      summary: Update a transaction
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransactionRequest'
+      responses:
+        '200':
+          description: Transaction updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      tags: [Transactions]
+      summary: Delete a transaction
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Transaction deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ── Budgets ───────────────────────────────────────────────────────────────────
+  /api/auth/v1/budgets/:
+    get:
+      tags: [Budgets]
+      summary: Get budgets for the authenticated user
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: category
+          in: query
+          schema:
+            type: string
+        - name: month
+          in: query
+          schema:
+            type: string
+        - name: year
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Budget list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/BudgetResponse'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      tags: [Budgets]
+      summary: Create a budget
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBudgetRequest'
+      responses:
+        '201':
+          description: Budget created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/auth/v1/budgets/usage:
+    get:
+      tags: [Budgets]
+      summary: Get budget usage for the authenticated user
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: category
+          in: query
+          schema:
+            type: string
+        - name: year
+          in: query
+          required: true
+          schema:
+            type: integer
+        - name: month
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Budget usage list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BudgetUsageResponse'
+        '400':
+          description: Invalid query params
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/auth/v1/budgets/{id}:
+    get:
+      tags: [Budgets]
+      summary: Get budget by ID
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Budget detail
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/BudgetResponse'
+        '400':
+          description: Invalid ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    patch:
+      tags: [Budgets]
+      summary: Update a budget
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateBudgetRequest'
+      responses:
+        '200':
+          description: Budget updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/BudgetResponse'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      tags: [Budgets]
+      summary: Delete a budget
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Budget deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          description: Invalid ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ── Goals ──────────────────────────────────────────────────────────────────────
+  /api/auth/v1/goals/:
+    get:
+      tags: [Goals]
+      summary: Get goals for the authenticated user
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: active
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: Filter to active goals only
+      responses:
+        '200':
+          description: Goal list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/GoalResponse'
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      tags: [Goals]
+      summary: Create a goal
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateGoalRequest'
+      responses:
+        '201':
+          description: Goal created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/auth/v1/goals/overview:
+    get:
+      tags: [Goals]
+      summary: Get goal overview (total active goals, savings, upcoming milestones)
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Goal overview
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    $ref: '#/components/schemas/GoalOverviewResponse'
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/auth/v1/goals/contribute:
+    patch:
+      tags: [Goals]
+      summary: Contribute to a goal
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GoalContributionRequest'
+      responses:
+        '200':
+          description: Contribution successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/auth/v1/goals/{id}:
+    get:
+      tags: [Goals]
+      summary: Get goal by ID
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Goal detail
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/GoalResponse'
+        '400':
+          description: Invalid ID or not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    patch:
+      tags: [Goals]
+      summary: Update a goal
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateGoalRequest'
+      responses:
+        '200':
+          description: Goal updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      tags: [Goals]
+      summary: Delete a goal
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Goal deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          description: Invalid ID or error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
