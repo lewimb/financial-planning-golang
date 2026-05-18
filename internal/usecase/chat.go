@@ -1,41 +1,119 @@
 package usecase
 
 import (
-	"bytes"
-	"encoding/json"
+	"context"
 	"errors"
 	"fmt"
-	"net/http"
-	"os"
+	"log"
+	"strings"
 	"time"
 
 	"github.com/financial-planning/internal/domain"
+	"google.golang.org/genai"
 )
 
 var ErrChatUnavailable = errors.New("AI service unavailable")
+
+// --- Gemini Client ---
+
+type GeminiClient struct {
+	client *genai.Client
+	model  string
+}
+
+func NewGeminiClient(ctx context.Context) (*GeminiClient, error) {
+	client, err := genai.NewClient(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create gemini client: %w", err)
+	}
+	return &GeminiClient{
+		client: client,
+		model:  "gemini-3-flash-preview",
+	}, nil
+}
+
+func (g *GeminiClient) Call(ctx context.Context, prompt string) (string, error) {
+	const maxRetries = 3
+	backoff := time.Second
+
+	for attempt := range maxRetries {
+		result, err := g.client.Models.GenerateContent(
+			ctx,
+			g.model,
+			genai.Text(prompt),
+			nil,
+		)
+		if err != nil {
+			if isRateLimitErr(err) {
+				if attempt == maxRetries-1 {
+					return "", fmt.Errorf("%w: rate limit exceeded", ErrChatUnavailable)
+				}
+				log.Printf("gemini: rate limited, retrying in %v (attempt %d/%d)", backoff, attempt+1, maxRetries)
+				select {
+				case <-ctx.Done():
+					return "", ctx.Err()
+				case <-time.After(backoff):
+					backoff *= 2
+					continue
+				}
+			}
+			return "", fmt.Errorf("%w: %v", ErrChatUnavailable, err)
+		}
+
+		text := result.Text()
+		if text == "" {
+			return "", ErrChatUnavailable
+		}
+		return text, nil
+	}
+
+	return "", fmt.Errorf("%w: max retries exceeded", ErrChatUnavailable)
+}
+
+func isRateLimitErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "429") ||
+		strings.Contains(msg, "rate limit") ||
+		strings.Contains(msg, "quota")
+}
+
+// --- ChatUseCase ---
 
 type ChatUseCase struct {
 	txRepo     domain.TransactionRepository
 	budgetRepo domain.BudgetRepository
 	goalRepo   domain.GoalRepository
+	logRepo    domain.AiLogRepository
+	gemini     *GeminiClient
 }
 
 func NewChatUseCase(
 	txRepo domain.TransactionRepository,
 	budgetRepo domain.BudgetRepository,
 	goalRepo domain.GoalRepository,
+	logRepo domain.AiLogRepository,
+	gemini *GeminiClient,
 ) *ChatUseCase {
-	return &ChatUseCase{txRepo: txRepo, budgetRepo: budgetRepo, goalRepo: goalRepo}
+	return &ChatUseCase{
+		txRepo:     txRepo,
+		budgetRepo: budgetRepo,
+		goalRepo:   goalRepo,
+		logRepo:    logRepo,
+		gemini:     gemini,
+	}
 }
 
-func (uc *ChatUseCase) Ask(userID int, message string) (string, error) {
+func (uc *ChatUseCase) Ask(ctx context.Context, userID int, message string) (string, error) {
 	now := time.Now()
 
 	income, _ := uc.txRepo.GetMonthlyIncome(userID)
 	expense, _ := uc.txRepo.GetMonthlyExpenses(userID)
 	netSavings, _ := uc.txRepo.GetNetSavings(userID)
-
 	budgetUsage, _ := uc.budgetRepo.GetUsage(userID, int(now.Month()), now.Year())
+
 	exceeded := 0
 	for _, b := range budgetUsage {
 		if b.Status == "EXCEEDED" {
@@ -45,7 +123,7 @@ func (uc *ChatUseCase) Ask(userID int, message string) (string, error) {
 
 	activeGoals, _ := uc.goalRepo.GetAll(userID, true)
 
-	context := fmt.Sprintf(`You are a helpful financial assistant. Answer the user's question based on their financial data below.
+	prompt := fmt.Sprintf(`You are a helpful financial assistant. Answer the user's question based on their financial data below.
 Respond in the same language the user writes in (Indonesian or English).
 Be concise and actionable.
 
@@ -64,68 +142,15 @@ User question: %s`,
 		message,
 	)
 
-	return callGemini(context)
-}
-
-type geminiRequest struct {
-	Contents []geminiContent `json:"contents"`
-}
-
-type geminiContent struct {
-	Parts []geminiPart `json:"parts"`
-}
-
-type geminiPart struct {
-	Text string `json:"text"`
-}
-
-type geminiResponse struct {
-	Candidates []struct {
-		Content struct {
-			Parts []geminiPart `json:"parts"`
-		} `json:"content"`
-	} `json:"candidates"`
-}
-
-func callGemini(prompt string) (string, error) {
-	apiKey := os.Getenv("GEMINI_API_KEY")
-	if apiKey == "" {
-		return "", ErrChatUnavailable
-	}
-
-	url := fmt.Sprintf(
-		"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=%s",
-		apiKey,
-	)
-
-	body := geminiRequest{
-		Contents: []geminiContent{
-			{Parts: []geminiPart{{Text: prompt}}},
-		},
-	}
-	payload, err := json.Marshal(body)
+	reply, err := uc.gemini.Call(ctx, prompt)
 	if err != nil {
+		log.Printf("gemini: failed to get reply for user %d: %v", userID, err)
 		return "", err
 	}
 
-	resp, err := http.Post(url, "application/json", bytes.NewReader(payload))
-	if err != nil {
-		return "", ErrChatUnavailable
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("Gemini API error: status %d", resp.StatusCode)
+	if saveErr := uc.logRepo.Save(userID, message, reply); saveErr != nil {
+		log.Printf("ai_logs: failed to save chat log for user %d: %v", userID, saveErr)
 	}
 
-	var gemResp geminiResponse
-	if err := json.NewDecoder(resp.Body).Decode(&gemResp); err != nil {
-		return "", err
-	}
-
-	if len(gemResp.Candidates) == 0 || len(gemResp.Candidates[0].Content.Parts) == 0 {
-		return "", ErrChatUnavailable
-	}
-
-	return gemResp.Candidates[0].Content.Parts[0].Text, nil
+	return reply, nil
 }

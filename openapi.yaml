@@ -1,8 +1,11 @@
 openapi: 3.0.3
 info:
   title: Financial Planning API
-  version: 1.0.0
-  description: REST API for the Financial Planning backend (Go/Gin).
+  version: 1.1.0
+  description: >
+    REST API for the Financial Planning backend (Go/Gin).
+    All `/api/auth/v1/…` routes require a valid JWT supplied either as an
+    `accessToken` cookie or a `Bearer` token in the `Authorization` header.
 
 servers:
   - url: http://localhost:8080
@@ -20,17 +23,22 @@ components:
       bearerFormat: JWT
 
   schemas:
+    # ── Common ────────────────────────────────────────────────────────────────
     Error:
       type: object
       properties:
         error:
           type: string
+      example:
+        error: "not found"
 
     MessageResponse:
       type: object
       properties:
         message:
           type: string
+      example:
+        message: "success"
 
     # ── Auth ──────────────────────────────────────────────────────────────────
     RegisterRequest:
@@ -44,6 +52,10 @@ components:
           type: string
         name:
           type: string
+      example:
+        email: "user@example.com"
+        password: "secret123"
+        name: "John Doe"
 
     LoginRequest:
       type: object
@@ -54,6 +66,9 @@ components:
           format: email
         password:
           type: string
+      example:
+        email: "user@example.com"
+        password: "secret123"
 
     LoginResponse:
       type: object
@@ -62,11 +77,18 @@ components:
           type: string
         status:
           type: string
+          description: HTTP status as a string (always "200")
         data:
           type: object
           properties:
             token:
               type: string
+              description: JWT used in subsequent requests
+      example:
+        message: "Login Successfully"
+        status: "200"
+        data:
+          token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 
     UserResponse:
       type: object
@@ -88,19 +110,28 @@ components:
     # ── Transactions ──────────────────────────────────────────────────────────
     TransactionRequest:
       type: object
+      required: [amount, category, type, date]
       properties:
         amount:
           type: integer
+          description: Amount in smallest currency unit (e.g. IDR — no decimal)
         category:
           type: string
         type:
           type: string
-          description: INCOME or EXPENSE (uppercased server-side)
+          enum: [INCOME, EXPENSE]
+          description: Case-insensitive; normalised to uppercase server-side
         date:
           type: string
           format: date-time
         description:
           type: string
+      example:
+        amount: 500000
+        category: "Food"
+        type: "EXPENSE"
+        date: "2025-05-01T00:00:00Z"
+        description: "Lunch"
 
     TransactionResponse:
       type: object
@@ -114,6 +145,7 @@ components:
           type: string
         type:
           type: string
+          enum: [INCOME, EXPENSE]
         date:
           type: string
           format: date-time
@@ -129,15 +161,25 @@ components:
             $ref: '#/components/schemas/TransactionResponse'
         total:
           type: integer
-          description: Total pages
+          description: >
+            Total number of matching records (not pages).
+            Calculate pages client-side: ceil(total / limit).
+      example:
+        data: []
+        total: 0
 
-    TransactionCountResponse:
+    MonthlyTotalResponse:
       type: object
       properties:
         total:
-          description: Aggregated value for the current month
+          type: number
+          format: float
+          description: Aggregated amount for the current calendar month
         message:
           type: string
+      example:
+        total: 3000000
+        message: "success"
 
     # ── Budgets ───────────────────────────────────────────────────────────────
     CreateBudgetRequest:
@@ -152,7 +194,7 @@ components:
         month:
           type: integer
           nullable: true
-          description: Required when period is MONTHLY
+          description: 1–12. Required when period is MONTHLY; omit for YEARLY.
         year:
           type: integer
         limit_amount:
@@ -160,21 +202,64 @@ components:
         alert_threshold:
           type: integer
           default: 80
-          description: Percentage threshold for alerts
+          description: Percentage (0–100) at which WARNING status is triggered
+      example:
+        category: "Food"
+        period: "MONTHLY"
+        month: 5
+        year: 2025
+        limit_amount: 2000000
+        alert_threshold: 80
 
     UpdateBudgetRequest:
       type: object
-      required: [limitAmount]
+      description: All fields are optional; send only what should change.
       properties:
         limitAmount:
           type: integer
+          description: New limit. Zero means "keep existing".
         alertThreshold:
+          type: integer
+          description: New threshold percentage. Zero means "keep existing".
+        category:
+          type: string
+          description: Rename the category. Empty string means "keep existing".
+      example:
+        limitAmount: 2500000
+        alertThreshold: 75
+
+    # GetAll /budgets returns Budget (snake_case)
+    BudgetListItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        user_id:
           type: integer
         category:
           type: string
+        period:
+          type: string
+          enum: [MONTHLY, YEARLY]
+        month:
+          type: integer
+          nullable: true
+        year:
+          type: integer
+        limit_amount:
+          type: integer
+        alert_threshold:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
 
+    # GetByID /budgets/:id returns BudgetResponse (camelCase)
     BudgetResponse:
       type: object
+      description: >
+        Note: field names use camelCase here (returned by GET /budgets/:id only).
+        The list endpoint GET /budgets returns snake_case fields instead.
       properties:
         id:
           type: integer
@@ -184,6 +269,7 @@ components:
           type: string
         period:
           type: string
+          enum: [MONTHLY, YEARLY]
         month:
           type: integer
           nullable: true
@@ -197,6 +283,29 @@ components:
           type: string
           format: date-time
 
+    # PUT /budgets/:id returns UpdateBudgetResponse (snake_case, no created_at)
+    UpdateBudgetResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+        user_id:
+          type: integer
+        category:
+          type: string
+        period:
+          type: string
+          enum: [MONTHLY, YEARLY]
+        month:
+          type: integer
+          nullable: true
+        year:
+          type: integer
+        limit_amount:
+          type: integer
+        alert_threshold:
+          type: integer
+
     BudgetUsageResponse:
       type: object
       properties:
@@ -206,6 +315,7 @@ components:
           type: string
         period:
           type: string
+          enum: [MONTHLY, YEARLY]
         limit:
           type: integer
         alert_threshold:
@@ -217,11 +327,14 @@ components:
         percentage:
           type: number
           format: float
+          description: Current spend as % of limit
         status:
           type: string
+          enum: [SAFE, WARNING, EXCEEDED]
         change_percent:
           type: number
           format: float
+          description: Spend change vs. same period last month (%)
 
     # ── Goals ─────────────────────────────────────────────────────────────────
     CreateGoalRequest:
@@ -237,6 +350,12 @@ components:
         deadline:
           type: string
           format: date-time
+          description: Must be in the future
+      example:
+        name: "Emergency Fund"
+        target_amount: 10000000
+        description: "3 months of expenses"
+        deadline: "2025-12-31T00:00:00Z"
 
     GoalResponse:
       type: object
@@ -251,6 +370,7 @@ components:
           type: integer
         status:
           type: string
+          enum: [ONGOING, COMPLETED]
         deadline:
           type: string
           format: date-time
@@ -265,10 +385,13 @@ components:
       properties:
         total_goals:
           type: integer
+          description: Count of active goals (deadline >= now)
         savings:
           type: integer
+          description: Sum of current_amount across all goals
         goals:
           type: array
+          description: Next 4 upcoming milestones ordered by deadline
           items:
             $ref: '#/components/schemas/GoalResponse'
 
@@ -280,6 +403,94 @@ components:
           type: integer
         contribution:
           type: integer
+          description: >
+            Sets current_amount directly (not an increment).
+            Must be > 0 and <= all-time net savings.
+      example:
+        goal_id: 1
+        contribution: 500000
+
+    # ── Dashboard ─────────────────────────────────────────────────────────────
+    BudgetStatusSummary:
+      type: object
+      properties:
+        total:
+          type: integer
+        safe:
+          type: integer
+        warning:
+          type: integer
+        exceeded:
+          type: integer
+
+    GoalProgressSummary:
+      type: object
+      properties:
+        total:
+          type: integer
+        active:
+          type: integer
+        completed:
+          type: integer
+
+    DashboardResponse:
+      type: object
+      properties:
+        monthly_income:
+          type: number
+          format: float
+          description: Total INCOME transactions for the current calendar month
+        monthly_expense:
+          type: number
+          format: float
+          description: Total EXPENSE transactions for the current calendar month
+        net_savings:
+          type: number
+          format: float
+          description: All-time net savings (total INCOME − total EXPENSE)
+        budget_summary:
+          $ref: '#/components/schemas/BudgetStatusSummary'
+        goal_summary:
+          $ref: '#/components/schemas/GoalProgressSummary'
+        active_goals:
+          type: array
+          description: Goals with deadline >= now
+          items:
+            $ref: '#/components/schemas/GoalResponse'
+      example:
+        monthly_income: 5000000
+        monthly_expense: 3200000
+        net_savings: 18500000
+        budget_summary:
+          total: 3
+          safe: 2
+          warning: 1
+          exceeded: 0
+        goal_summary:
+          total: 2
+          active: 1
+          completed: 1
+        active_goals: []
+
+    # ── Chat ──────────────────────────────────────────────────────────────────
+    ChatRequest:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+          description: Natural-language question about the user's finances
+      example:
+        message: "Berapa pengeluaran saya bulan ini?"
+
+    ChatResponse:
+      type: object
+      properties:
+        reply:
+          type: string
+          description: AI-generated answer in the same language as the question
+      example:
+        reply: "Pengeluaran Anda bulan ini adalah Rp 3.200.000."
 
 paths:
   # ── Auth ────────────────────────────────────────────────────────────────────
@@ -295,19 +506,25 @@ paths:
               $ref: '#/components/schemas/RegisterRequest'
       responses:
         '200':
-          description: User created
+          description: User created successfully
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/MessageResponse'
         '400':
-          description: Invalid input
+          description: Validation error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '409':
-          description: User already exists
+          description: Email already in use
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
           content:
             application/json:
               schema:
@@ -317,6 +534,10 @@ paths:
     post:
       tags: [Auth]
       summary: Login and receive JWT
+      description: >
+        On success the JWT is returned in the response body **and** set as an
+        `accessToken` cookie (1-hour expiry). Subsequent requests may use
+        either the cookie or an `Authorization: Bearer <token>` header.
       requestBody:
         required: true
         content:
@@ -325,19 +546,13 @@ paths:
               $ref: '#/components/schemas/LoginRequest'
       responses:
         '200':
-          description: Login successful — JWT set in `accessToken` cookie
+          description: Login successful
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/LoginResponse'
         '400':
-          description: Invalid credentials or input
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '401':
-          description: Login failed
+          description: Invalid credentials or missing fields
           content:
             application/json:
               schema:
@@ -346,10 +561,10 @@ paths:
   /api/v1/users:
     get:
       tags: [Auth]
-      summary: Get all users
+      summary: List all users (no auth required)
       responses:
         '200':
-          description: List of users
+          description: User list
           content:
             application/json:
               schema:
@@ -363,12 +578,18 @@ paths:
                     type: string
                   message:
                     type: string
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   # ── Transactions ─────────────────────────────────────────────────────────────
-  /api/auth/v1/transactions/users:
+  /api/auth/v1/transactions:
     get:
       tags: [Transactions]
-      summary: Get transactions for the authenticated user
+      summary: List transactions (paginated, filterable)
       security:
         - cookieAuth: []
         - bearerAuth: []
@@ -377,22 +598,24 @@ paths:
           in: query
           schema:
             type: string
-          description: Filter by month (e.g. "01"–"12")
+          description: "Filter by month number (1–12)"
         - name: year
           in: query
           schema:
             type: string
-          description: Filter by year (e.g. "2024")
+          description: "Filter by 4-digit year"
         - name: limit
           in: query
           schema:
             type: integer
             default: 10
+          description: Page size (0 = no limit)
         - name: offset
           in: query
           schema:
             type: integer
             default: 0
+          description: Number of records to skip
       responses:
         '200':
           description: Paginated transaction list
@@ -400,14 +623,13 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TransactionListResponse'
-        '404':
-          description: Not found
+        '500':
+          description: Internal server error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
 
-  /api/auth/v1/transactions/:
     post:
       tags: [Transactions]
       summary: Create a transaction
@@ -428,28 +650,51 @@ paths:
               schema:
                 $ref: '#/components/schemas/MessageResponse'
         '400':
-          description: Invalid input
+          description: Validation error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
 
-  /api/auth/v1/transactions/count:
+  /api/auth/v1/transactions/monthly:
     get:
       tags: [Transactions]
-      summary: Get transaction totals for the current month
+      summary: Current month total expenses
+      description: Returns the sum of all EXPENSE transactions for the current calendar month.
       security:
         - cookieAuth: []
         - bearerAuth: []
       responses:
         '200':
-          description: Monthly transaction count/total
+          description: Monthly expense total
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TransactionCountResponse'
-        '404':
-          description: Not found
+                $ref: '#/components/schemas/MonthlyTotalResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/auth/v1/transactions/monthly-income:
+    get:
+      tags: [Transactions]
+      summary: Current month total income
+      description: Returns the sum of all INCOME transactions for the current calendar month.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Monthly income total
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MonthlyTotalResponse'
+        '500':
+          description: Internal server error
           content:
             application/json:
               schema:
@@ -482,7 +727,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/MessageResponse'
         '400':
-          description: Invalid input
+          description: Invalid input or ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Transaction not found or belongs to another user
           content:
             application/json:
               schema:
@@ -490,7 +741,7 @@ paths:
 
     delete:
       tags: [Transactions]
-      summary: Delete a transaction
+      summary: Soft-delete a transaction
       security:
         - cookieAuth: []
         - bearerAuth: []
@@ -508,17 +759,26 @@ paths:
               schema:
                 $ref: '#/components/schemas/MessageResponse'
         '400':
-          description: Invalid input
+          description: Invalid ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Transaction not found
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
 
   # ── Budgets ───────────────────────────────────────────────────────────────────
-  /api/auth/v1/budgets/:
+  /api/auth/v1/budgets:
     get:
       tags: [Budgets]
-      summary: Get budgets for the authenticated user
+      summary: List budgets
+      description: >
+        Response fields use **snake_case** (`user_id`, `limit_amount`,
+        `alert_threshold`, `created_at`). See `BudgetListItem` schema.
       security:
         - cookieAuth: []
         - bearerAuth: []
@@ -531,10 +791,12 @@ paths:
           in: query
           schema:
             type: string
+          description: Filter by month number
         - name: year
           in: query
           schema:
             type: string
+          description: Filter by 4-digit year
       responses:
         '200':
           description: Budget list
@@ -546,9 +808,9 @@ paths:
                   data:
                     type: array
                     items:
-                      $ref: '#/components/schemas/BudgetResponse'
-        '404':
-          description: Not found
+                      $ref: '#/components/schemas/BudgetListItem'
+        '500':
+          description: Internal server error
           content:
             application/json:
               schema:
@@ -574,7 +836,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/MessageResponse'
         '400':
-          description: Invalid input
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Budget for this category/period/month/year already exists
           content:
             application/json:
               schema:
@@ -583,27 +851,29 @@ paths:
   /api/auth/v1/budgets/usage:
     get:
       tags: [Budgets]
-      summary: Get budget usage for the authenticated user
+      summary: Budget usage with SAFE / WARNING / EXCEEDED status
+      description: >
+        Compares current-period spending against limit_amount and
+        alert_threshold. Returns a **direct JSON array** (not wrapped in
+        `{"data": ...}`).
       security:
         - cookieAuth: []
         - bearerAuth: []
       parameters:
-        - name: category
-          in: query
-          schema:
-            type: string
         - name: year
           in: query
           required: true
           schema:
             type: integer
+          description: 4-digit year (e.g. 2025)
         - name: month
           in: query
           schema:
             type: integer
+          description: 1–12. Defaults to current month when omitted.
       responses:
         '200':
-          description: Budget usage list
+          description: Budget usage array
           content:
             application/json:
               schema:
@@ -611,13 +881,13 @@ paths:
                 items:
                   $ref: '#/components/schemas/BudgetUsageResponse'
         '400':
-          description: Invalid query params
+          description: Invalid or missing year
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-        '404':
-          description: Not found
+        '500':
+          description: Internal server error
           content:
             application/json:
               schema:
@@ -627,6 +897,9 @@ paths:
     get:
       tags: [Budgets]
       summary: Get budget by ID
+      description: >
+        Response fields use **camelCase** (`userId`, `limitAmount`,
+        `alertThreshold`, `createdAt`). See `BudgetResponse` schema.
       security:
         - cookieAuth: []
         - bearerAuth: []
@@ -653,15 +926,20 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '404':
-          description: Not found
+          description: Budget not found
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
 
-    patch:
+    put:
       tags: [Budgets]
       summary: Update a budget
+      description: >
+        Partial update — omitted fields keep their existing values.
+        Zero values for `limitAmount` / `alertThreshold` are treated as
+        "no change" (see `NULLIF` in repo). Response uses **snake_case**
+        and does not include `created_at`.
       security:
         - cookieAuth: []
         - bearerAuth: []
@@ -679,16 +957,22 @@ paths:
               $ref: '#/components/schemas/UpdateBudgetRequest'
       responses:
         '200':
-          description: Budget updated
+          description: Budget updated — returns updated record
           content:
             application/json:
               schema:
                 type: object
                 properties:
                   data:
-                    $ref: '#/components/schemas/BudgetResponse'
+                    $ref: '#/components/schemas/UpdateBudgetResponse'
         '400':
-          description: Invalid input
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Budget not found
           content:
             application/json:
               schema:
@@ -696,7 +980,7 @@ paths:
 
     delete:
       tags: [Budgets]
-      summary: Delete a budget
+      summary: Soft-delete a budget
       security:
         - cookieAuth: []
         - bearerAuth: []
@@ -720,17 +1004,17 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '404':
-          description: Not found
+          description: Budget not found
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
 
   # ── Goals ──────────────────────────────────────────────────────────────────────
-  /api/auth/v1/goals/:
+  /api/auth/v1/goals:
     get:
       tags: [Goals]
-      summary: Get goals for the authenticated user
+      summary: List goals
       security:
         - cookieAuth: []
         - bearerAuth: []
@@ -740,7 +1024,9 @@ paths:
           schema:
             type: boolean
             default: false
-          description: Filter to active goals only
+          description: >
+            Pass `true` to return only goals whose deadline >= now.
+            Server compares the string value "true" literally.
       responses:
         '200':
           description: Goal list
@@ -753,8 +1039,8 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/GoalResponse'
-        '400':
-          description: Error
+        '500':
+          description: Internal server error
           content:
             application/json:
               schema:
@@ -780,7 +1066,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/MessageResponse'
         '400':
-          description: Invalid input
+          description: Validation error (deadline in past, target ≤ 0, name empty)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Active goal with same name already exists
           content:
             application/json:
               schema:
@@ -789,7 +1081,7 @@ paths:
   /api/auth/v1/goals/overview:
     get:
       tags: [Goals]
-      summary: Get goal overview (total active goals, savings, upcoming milestones)
+      summary: Goal overview — active count, total savings, upcoming milestones
       security:
         - cookieAuth: []
         - bearerAuth: []
@@ -805,8 +1097,35 @@ paths:
                     type: string
                   data:
                     $ref: '#/components/schemas/GoalOverviewResponse'
-        '400':
-          description: Error
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/auth/v1/goals/milestones:
+    get:
+      tags: [Goals]
+      summary: Next 4 upcoming milestones (deadline ascending, not yet completed)
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Milestone list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    maxItems: 4
+                    items:
+                      $ref: '#/components/schemas/GoalResponse'
+        '500':
+          description: Internal server error
           content:
             application/json:
               schema:
@@ -815,7 +1134,12 @@ paths:
   /api/auth/v1/goals/contribute:
     patch:
       tags: [Goals]
-      summary: Contribute to a goal
+      summary: Set a goal's current_amount
+      description: >
+        **Sets** `current_amount` to the supplied `contribution` value — it does
+        not add to the existing amount. Auto-completes the goal when
+        `contribution >= target_amount`. Contribution must not exceed
+        all-time net savings.
       security:
         - cookieAuth: []
         - bearerAuth: []
@@ -827,13 +1151,19 @@ paths:
               $ref: '#/components/schemas/GoalContributionRequest'
       responses:
         '200':
-          description: Contribution successful
+          description: Contribution applied
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/MessageResponse'
         '400':
-          description: Invalid input
+          description: Invalid input or contribution exceeds net savings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Goal not found
           content:
             application/json:
               schema:
@@ -863,15 +1193,25 @@ paths:
                   data:
                     $ref: '#/components/schemas/GoalResponse'
         '400':
-          description: Invalid ID or not found
+          description: Invalid ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Goal not found
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
 
-    patch:
+    put:
       tags: [Goals]
       summary: Update a goal
+      description: >
+        If new `target_amount` is less than `current_amount`, the target
+        is NOT updated (prevents setting a target below what was already saved).
+        Deadline is updated unconditionally.
       security:
         - cookieAuth: []
         - bearerAuth: []
@@ -895,7 +1235,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/MessageResponse'
         '400':
-          description: Invalid input
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Goal not found
           content:
             application/json:
               schema:
@@ -903,7 +1249,10 @@ paths:
 
     delete:
       tags: [Goals]
-      summary: Delete a goal
+      summary: Hard-delete a goal
+      description: >
+        Unlike transactions and budgets, goals are permanently deleted
+        (no soft-delete / `deleted_at`).
       security:
         - cookieAuth: []
         - bearerAuth: []
@@ -921,7 +1270,88 @@ paths:
               schema:
                 $ref: '#/components/schemas/MessageResponse'
         '400':
-          description: Invalid ID or error
+          description: Invalid ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Goal not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ── Dashboard ─────────────────────────────────────────────────────────────────
+  /api/auth/v1/dashboard:
+    get:
+      tags: [Dashboard]
+      summary: Aggregated financial dashboard
+      description: >
+        Returns current-month income, expense, all-time net savings, budget
+        status counts, goal progress counts, and list of active goals.
+        No query parameters — always uses server-side `time.Now()`.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Dashboard data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/DashboardResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ── Chat ──────────────────────────────────────────────────────────────────────
+  /api/auth/v1/chat:
+    post:
+      tags: [Chat]
+      summary: Ask the AI assistant about your finances
+      description: >
+        Sends a natural-language question to Gemini 2.0 Flash with the user's
+        current financial context (monthly income/expense, budget status, active
+        goals). The conversation is persisted to `ai_logs`. Responds in the
+        same language the user writes in. Requires `GEMINI_API_KEY` to be set
+        on the server — returns 503 otherwise.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+      responses:
+        '200':
+          description: AI reply
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatResponse'
+        '400':
+          description: Missing or empty message field
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Gemini API key not configured or Gemini unreachable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Unexpected server error
           content:
             application/json:
               schema:

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"errors"
+	"net/http"
 
 	"github.com/financial-planning/internal/domain"
 	"github.com/financial-planning/internal/usecase"
@@ -19,19 +20,22 @@ func NewChatHandler(uc *usecase.ChatUseCase) *ChatHandler {
 
 func (h *ChatHandler) Ask(c *gin.Context) {
 	userID := utils.ClaimId(c)
+
 	var req domain.ChatRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(400, gin.H{"error": "message is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "message is required"})
 		return
 	}
-	reply, err := h.uc.Ask(userID, req.Message)
+
+	reply, err := h.uc.Ask(c.Request.Context(), userID, req.Message)
 	if err != nil {
 		if errors.Is(err, usecase.ErrChatUnavailable) {
-			c.JSON(503, gin.H{"error": "AI service unavailable"})
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "AI service unavailable"})
 			return
 		}
-		c.JSON(500, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 		return
 	}
-	c.JSON(200, domain.ChatResponse{Reply: reply})
+
+	c.JSON(http.StatusOK, domain.ChatResponse{Reply: reply})
 }

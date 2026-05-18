@@ -1,0 +1,1 @@
+ALTER TABLE transactions ALTER COLUMN amount TYPE DECIMAL(10,2) USING amount::DECIMAL(10,2);

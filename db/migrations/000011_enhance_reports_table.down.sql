@@ -1,0 +1,5 @@
+ALTER TABLE reports
+    DROP COLUMN IF EXISTS month,
+    DROP COLUMN IF EXISTS year,
+    DROP COLUMN IF EXISTS content,
+    DROP COLUMN IF EXISTS status;

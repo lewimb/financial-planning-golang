@@ -88,7 +88,8 @@ func (r *transactionRepository) Create(userID int, req domain.TransactionRequest
 func (r *transactionRepository) Update(userID, id int, req domain.TransactionRequest) error {
 	result, err := r.db.Exec(`
 		UPDATE transactions
-		SET amount = $1, category = $2, type = $3, date = $4, description = $5
+		SET amount = $1, category = $2, type = $3, date = $4, description = $5,
+		    updated_at = NOW()
 		WHERE id = $6 AND user_id = $7 AND deleted_at IS NULL
 	`, req.Amount, req.Category, req.Type, req.Date, req.Description, id, userID)
 	if err != nil {

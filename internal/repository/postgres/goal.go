@@ -113,7 +113,8 @@ func (r *goalRepository) Update(id, userID int, req domain.CreateGoalRequest) er
 			target_amount = CASE WHEN $2 > current_amount THEN $2 ELSE target_amount END,
 			description = $3,
 			deadline = $4,
-			status = CASE WHEN $2 > current_amount THEN 'ONGOING' ELSE status END
+			status = CASE WHEN $2 > current_amount THEN 'ONGOING' ELSE status END,
+			updated_at = NOW()
 		WHERE id = $5 AND user_id = $6
 	`, req.Name, req.TargetAmount, req.Description, req.Deadline, id, userID)
 	return err
@@ -138,7 +139,8 @@ func (r *goalRepository) Contribute(id, userID, amount int) error {
 	_, err := r.db.Exec(`
 		UPDATE goals
 		SET current_amount = $1,
-		    status = CASE WHEN $1 >= target_amount THEN 'COMPLETED' ELSE status END
+		    status = CASE WHEN $1 >= target_amount THEN 'COMPLETED' ELSE status END,
+		    updated_at = NOW()
 		WHERE id = $2 AND user_id = $3
 	`, amount, id, userID)
 	return err

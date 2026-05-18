@@ -171,7 +171,8 @@ func (r *budgetRepository) Update(userID, id, limitAmount, alertThreshold int, c
 		UPDATE budgets
 		SET limit_amount = COALESCE(NULLIF($1, 0), limit_amount),
 		    alert_threshold = COALESCE(NULLIF($2, 0), alert_threshold),
-		    category = COALESCE(NULLIF($3, ''), category)
+		    category = COALESCE(NULLIF($3, ''), category),
+		    updated_at = NOW()
 		WHERE user_id = $4 AND id = $5
 		RETURNING id, user_id, category, period, month, year, limit_amount, alert_threshold
 	`, limitAmount, alertThreshold, category, userID, id).

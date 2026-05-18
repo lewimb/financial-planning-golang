@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -47,6 +48,17 @@ func main() {
 		fmt.Printf("Error loading .env file: %v\n", err)
 	}
 
+	ctx := context.Background()
+
+	if err := godotenv.Load(); err != nil {
+		log.Printf("warning: .env file not loaded: %v", err)
+	}
+
+	gemini, err := usecase.NewGeminiClient(ctx)
+	if err != nil {
+		log.Fatalf("Gemini client init failed: %v", err)
+	}
+
 	db, err := initDB(
 		os.Getenv("DB_USER"),
 		os.Getenv("DB_PASSWORD"),
@@ -60,18 +72,19 @@ func main() {
 	defer db.Close()
 
 	// repositories
-	userRepo   := postgres.NewUserRepository(db)
-	txRepo     := postgres.NewTransactionRepository(db)
+	userRepo := postgres.NewUserRepository(db)
+	txRepo := postgres.NewTransactionRepository(db)
 	budgetRepo := postgres.NewBudgetRepository(db)
-	goalRepo   := postgres.NewGoalRepository(db)
+	goalRepo := postgres.NewGoalRepository(db)
+	aiLogRepo := postgres.NewAiLogRepository(db)
 
 	// use cases
-	userUC      := usecase.NewUserUseCase(userRepo)
-	txUC        := usecase.NewTransactionUseCase(txRepo)
-	budgetUC    := usecase.NewBudgetUseCase(budgetRepo)
-	goalUC      := usecase.NewGoalUseCase(goalRepo, txRepo)
+	userUC := usecase.NewUserUseCase(userRepo)
+	txUC := usecase.NewTransactionUseCase(txRepo)
+	budgetUC := usecase.NewBudgetUseCase(budgetRepo)
+	goalUC := usecase.NewGoalUseCase(goalRepo, txRepo)
 	dashboardUC := usecase.NewDashboardUseCase(txRepo, budgetRepo, goalRepo)
-	chatUC      := usecase.NewChatUseCase(txRepo, budgetRepo, goalRepo)
+	chatUC := usecase.NewChatUseCase(txRepo, budgetRepo, goalRepo, aiLogRepo, gemini)
 
 	// delivery
 	r := gin.Default()

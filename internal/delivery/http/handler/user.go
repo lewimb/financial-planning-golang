@@ -2,6 +2,7 @@ package handler
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/financial-planning/internal/usecase"
 	"github.com/gin-gonic/gin"
@@ -45,8 +46,12 @@ func (h *UserHandler) Login(c *gin.Context) {
 		c.JSON(400, gin.H{"error": "Invalid input: " + err.Error()})
 		return
 	}
+
+	fmt.Println("Login request received for email:", req.Email, req.Password)
+
 	token, err := h.uc.Login(req.Email, req.Password)
 	if err != nil {
+		fmt.Printf("Login failed for email %s: %v\n", req.Email, err)
 		if errors.Is(err, usecase.ErrInvalidCredentials) {
 			c.JSON(400, gin.H{"error": err.Error()})
 			return
