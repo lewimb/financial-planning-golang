@@ -8,12 +8,14 @@ import (
 )
 
 type Deps struct {
-	UserUC        *usecase.UserUseCase
-	TransactionUC *usecase.TransactionUseCase
-	BudgetUC      *usecase.BudgetUseCase
-	GoalUC        *usecase.GoalUseCase
-	DashboardUC   *usecase.DashboardUseCase
-	ChatUC        *usecase.ChatUseCase
+	UserUC             *usecase.UserUseCase
+	TransactionUC      *usecase.TransactionUseCase
+	BudgetUC           *usecase.BudgetUseCase
+	GoalUC             *usecase.GoalUseCase
+	DashboardUC        *usecase.DashboardUseCase
+	ChatUC             *usecase.ChatUseCase
+	MLUC               *usecase.MLUseCase
+	FinancialProfileUC *usecase.FinancialProfileUseCase
 }
 
 func Setup(r *gin.Engine, deps Deps) {
@@ -55,4 +57,13 @@ func Setup(r *gin.Engine, deps Deps) {
 
 	cH := handler.NewChatHandler(deps.ChatUC)
 	api.POST("/chat", cH.Ask)
+
+	mlH := handler.NewMLHandler(deps.MLUC)
+	api.GET("/ml/analysis", mlH.GetAnalysis)
+	api.GET("/ml/anomaly", mlH.GetAnomaly)
+	api.GET("/ml/forecast", mlH.GetForecast)
+
+	fpH := handler.NewFinancialProfileHandler(deps.FinancialProfileUC)
+	api.POST("/financial-profile", fpH.Upsert)
+	api.GET("/financial-profile", fpH.Get)
 }

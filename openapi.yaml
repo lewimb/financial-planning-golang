@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Financial Planning API
-  version: 1.1.0
+  version: 1.2.0
   description: >
     REST API for the Financial Planning backend (Go/Gin).
     All `/api/auth/v1/…` routes require a valid JWT supplied either as an
@@ -491,6 +491,213 @@ components:
           description: AI-generated answer in the same language as the question
       example:
         reply: "Pengeluaran Anda bulan ini adalah Rp 3.200.000."
+
+    # ── Financial Profile ─────────────────────────────────────────────────────
+    FinancialProfileRequest:
+      type: object
+      required:
+        - monthly_income
+        - fixed_expenses
+        - current_savings
+        - debt
+        - employment_status
+        - financial_goals
+      properties:
+        monthly_income:
+          type: number
+          format: double
+          minimum: 0
+          description: Gross monthly income
+        fixed_expenses:
+          type: number
+          format: double
+          minimum: 0
+          description: Recurring monthly expenses (rent, subscriptions, etc.)
+        current_savings:
+          type: number
+          format: double
+          minimum: 0
+          description: Total current savings balance
+        debt:
+          type: number
+          format: double
+          minimum: 0
+          description: Total outstanding debt
+        employment_status:
+          type: string
+          description: E.g. "employed", "self_employed", "student", "unemployed"
+        financial_goals:
+          type: array
+          minItems: 1
+          items:
+            type: string
+          description: >
+            One or more goal types the user is working toward.
+            Common values: emergency_fund, house, investment, education, travel, retirement.
+        spending_habit:
+          type: string
+          nullable: true
+          description: "Optional. E.g. \"impulsive\", \"frugal\", \"moderate\""
+        risk_level:
+          type: string
+          nullable: true
+          description: "Optional. E.g. \"low\", \"medium\", \"high\""
+      example:
+        monthly_income: 8000000
+        fixed_expenses: 3000000
+        current_savings: 5000000
+        debt: 1000000
+        employment_status: "employed"
+        financial_goals: ["emergency_fund", "house"]
+        spending_habit: "moderate"
+        risk_level: "medium"
+
+    FinancialProfileResponse:
+      type: object
+      properties:
+        monthly_income:
+          type: number
+          format: double
+        fixed_expenses:
+          type: number
+          format: double
+        current_savings:
+          type: number
+          format: double
+        debt:
+          type: number
+          format: double
+        employment_status:
+          type: string
+        financial_goals:
+          type: array
+          items:
+            type: string
+        spending_habit:
+          type: string
+          nullable: true
+        risk_level:
+          type: string
+          nullable: true
+        net_available:
+          type: number
+          format: double
+          description: Computed as monthly_income − fixed_expenses − debt
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      example:
+        monthly_income: 8000000
+        fixed_expenses: 3000000
+        current_savings: 5000000
+        debt: 1000000
+        employment_status: "employed"
+        financial_goals: ["emergency_fund", "house"]
+        spending_habit: "moderate"
+        risk_level: "medium"
+        net_available: 4000000
+        created_at: "2026-05-19T10:00:00Z"
+        updated_at: "2026-05-19T10:00:00Z"
+
+    MLAnalysisResponse:
+      type: object
+      properties:
+        total_expense:
+          type: number
+          format: double
+          description: Sum of all EXPENSE transactions in the period
+        avg_daily:
+          type: number
+          format: double
+          description: Average daily spending
+        top_category:
+          type: string
+          nullable: true
+          description: Category with the highest total spend; null when no expense data
+        spending_distribution:
+          type: object
+          additionalProperties:
+            type: number
+            format: double
+          description: Per-category spend totals
+      example:
+        total_expense: 450000
+        avg_daily: 64285.71
+        top_category: "food"
+        spending_distribution:
+          food: 180000
+          transport: 150000
+          utilities: 120000
+
+    MLAnomalyRecord:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+          description: YYYY-MM-DD of the anomalous spending day
+        amount:
+          type: number
+          format: double
+          description: Total spend on that day
+      example:
+        date: "2026-01-15"
+        amount: 875000
+
+    MLAnomalyResponse:
+      type: object
+      properties:
+        anomalies:
+          type: array
+          items:
+            $ref: '#/components/schemas/MLAnomalyRecord'
+          description: Days flagged as statistically unusual
+        summary:
+          type: string
+          description: Human-readable summary of anomaly results
+      example:
+        anomalies:
+          - date: "2026-01-15"
+            amount: 875000
+        summary: "You spent unusually high on 1 day(s)"
+
+    MLForecastRecord:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+          description: YYYY-MM-DD of the predicted day
+        predicted_amount:
+          type: number
+          format: double
+          description: Predicted spend for that day
+      example:
+        date: "2026-02-01"
+        predicted_amount: 58000
+
+    MLForecastResponse:
+      type: object
+      properties:
+        predicted_monthly_spending:
+          type: number
+          format: double
+          description: Projected total spend for the forecast period
+        daily_forecast:
+          type: array
+          items:
+            $ref: '#/components/schemas/MLForecastRecord'
+          description: Day-by-day predicted spend
+      example:
+        predicted_monthly_spending: 1820000
+        daily_forecast:
+          - date: "2026-02-01"
+            predicted_amount: 58000
+          - date: "2026-02-02"
+            predicted_amount: 62000
 
 paths:
   # ── Auth ────────────────────────────────────────────────────────────────────
@@ -1352,6 +1559,300 @@ paths:
                 $ref: '#/components/schemas/Error'
         '500':
           description: Unexpected server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/auth/v1/ml/analysis:
+    get:
+      tags:
+        - ML
+      summary: Spending analysis
+      description: >
+        Fetches the authenticated user's transactions, forwards them to the ML
+        service (`POST /analysis`), and returns aggregated spending statistics.
+        Filters by `year` and/or `month` when provided.
+        Backed by Facebook Prophet / Pandas. Timeout: 5 s.
+        Returns 503 when the ML service is unreachable.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: year
+          in: query
+          required: false
+          schema:
+            type: string
+            example: "2026"
+          description: Filter transactions to this year (YYYY)
+        - name: month
+          in: query
+          required: false
+          schema:
+            type: string
+            example: "01"
+          description: Filter transactions to this month (MM); requires year
+      responses:
+        '200':
+          description: Aggregated spending statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MLAnalysisResponse'
+        '503':
+          description: ML service unreachable or returned an error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Unexpected server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/auth/v1/ml/anomaly:
+    get:
+      tags:
+        - ML
+      summary: Anomaly detection
+      description: >
+        Fetches the authenticated user's transactions, forwards them to the ML
+        service (`POST /anomaly`), and returns days with statistically unusual
+        spending. Uses IsolationForest (scikit-learn). Requires at least 5 unique
+        expense days — returns an empty anomaly list otherwise.
+        Filters by `year` and/or `month` when provided. Timeout: 10 s.
+        Returns 503 when the ML service is unreachable.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: year
+          in: query
+          required: false
+          schema:
+            type: string
+            example: "2026"
+          description: Filter transactions to this year (YYYY)
+        - name: month
+          in: query
+          required: false
+          schema:
+            type: string
+            example: "01"
+          description: Filter transactions to this month (MM); requires year
+      responses:
+        '200':
+          description: Anomalous spending days
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MLAnomalyResponse'
+        '503':
+          description: ML service unreachable or returned an error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Unexpected server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/auth/v1/ml/forecast:
+    get:
+      tags:
+        - ML
+      summary: Spending forecast
+      description: >
+        Fetches the authenticated user's transactions, forwards them to the ML
+        service (`POST /forecast?periods=N`), and returns a day-by-day spending
+        forecast. Uses Facebook Prophet. `periods` is clamped to [1, 365] and
+        defaults to 30. Accuracy improves significantly with 30+ days of history.
+        Filters by `year` and/or `month` when provided. Timeout: 60 s.
+        Returns 503 when the ML service is unreachable.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: periods
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 365
+            default: 30
+          description: Number of days ahead to forecast
+        - name: year
+          in: query
+          required: false
+          schema:
+            type: string
+            example: "2026"
+          description: Filter transactions to this year (YYYY)
+        - name: month
+          in: query
+          required: false
+          schema:
+            type: string
+            example: "01"
+          description: Filter transactions to this month (MM); requires year
+      responses:
+        '200':
+          description: Daily spending forecast and projected monthly total
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MLForecastResponse'
+        '503':
+          description: ML service unreachable or returned an error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Unexpected server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ── Financial Profile ──────────────────────────────────────────────────────────
+  /api/auth/v1/financial-profile:
+    post:
+      tags: [Financial Profile]
+      summary: Create or update financial profile
+      description: >
+        Upserts the authenticated user's financial profile. Creates on first call,
+        updates on subsequent calls. Goals list is fully replaced on every call —
+        send the complete desired list each time.
+        Returns the saved profile including the computed `net_available` field
+        (monthly_income − fixed_expenses − debt).
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FinancialProfileRequest'
+            example:
+              monthly_income: 8000000
+              fixed_expenses: 3000000
+              current_savings: 5000000
+              debt: 1000000
+              employment_status: "employed"
+              financial_goals: ["emergency_fund", "house"]
+              spending_habit: "moderate"
+              risk_level: "medium"
+      responses:
+        '200':
+          description: Profile saved — returns the full profile with net_available
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "profile saved"
+                  data:
+                    $ref: '#/components/schemas/FinancialProfileResponse'
+              example:
+                message: "profile saved"
+                data:
+                  monthly_income: 8000000
+                  fixed_expenses: 3000000
+                  current_savings: 5000000
+                  debt: 1000000
+                  employment_status: "employed"
+                  financial_goals: ["emergency_fund", "house"]
+                  spending_habit: "moderate"
+                  risk_level: "medium"
+                  net_available: 4000000
+                  created_at: "2026-05-19T10:00:00Z"
+                  updated_at: "2026-05-19T10:00:00Z"
+        '400':
+          description: >
+            Validation failure — any of: negative number field, empty
+            employment_status, empty financial_goals array, blank goal entry.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                negative_income:
+                  value: { "error": "monthly_income must be >= 0" }
+                empty_goals:
+                  value: { "error": "financial_goals cannot be empty" }
+        '401':
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    get:
+      tags: [Financial Profile]
+      summary: Get current user's financial profile
+      description: >
+        Returns the authenticated user's financial profile including all goals
+        and the computed `net_available` field. Returns 404 if the user has
+        not yet completed onboarding (profile not created).
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Financial profile
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/FinancialProfileResponse'
+              example:
+                data:
+                  monthly_income: 8000000
+                  fixed_expenses: 3000000
+                  current_savings: 5000000
+                  debt: 1000000
+                  employment_status: "employed"
+                  financial_goals: ["emergency_fund", "house"]
+                  spending_habit: "moderate"
+                  risk_level: "medium"
+                  net_available: 4000000
+                  created_at: "2026-05-19T10:00:00Z"
+                  updated_at: "2026-05-19T10:00:00Z"
+        '404':
+          description: Profile not found — user has not completed onboarding
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "profile not found"
+        '401':
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
           content:
             application/json:
               schema:

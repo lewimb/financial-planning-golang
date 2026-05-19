@@ -1,0 +1,268 @@
+openapi: 3.0.3
+info:
+  title: Financial Planning ML Service
+  description: >
+    Stateless ML service exposing spending analysis, anomaly detection,
+    and forecasting. Accepts raw transaction arrays; returns structured results.
+    Designed to be called by a Go backend — no auth, no DB, no state.
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8000
+    description: Local development
+
+paths:
+
+  /analysis:
+    post:
+      summary: Spending analysis
+      description: >
+        Aggregates expense transactions. Returns total spend, average daily
+        spend, top category, and per-category breakdown. INCOME transactions
+        are silently filtered.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransactionList'
+            example:
+              - date: "2026-01-01"
+                amount: 50000
+                type: EXPENSE
+                category: food
+              - date: "2026-01-01"
+                amount: 500000
+                type: INCOME
+                category: salary
+              - date: "2026-01-02"
+                amount: 75000
+                type: EXPENSE
+                category: transport
+              - date: "2026-01-03"
+                amount: 30000
+                type: EXPENSE
+                category: food
+      responses:
+        "200":
+          description: Analysis result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalysisResponse'
+              example:
+                total_expense: 155000.0
+                avg_daily: 51666.67
+                top_category: food
+                spending_distribution:
+                  food: 80000.0
+                  transport: 75000.0
+
+  /anomaly:
+    post:
+      summary: Anomaly detection
+      description: >
+        Uses IsolationForest on daily expense totals to flag statistically
+        unusual spending days. Requires at least 5 expense days; returns
+        empty list otherwise.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransactionList'
+            example:
+              - date: "2026-01-01"
+                amount: 50000
+                type: EXPENSE
+                category: food
+              - date: "2026-01-02"
+                amount: 75000
+                type: EXPENSE
+                category: transport
+              - date: "2026-01-03"
+                amount: 30000
+                type: EXPENSE
+                category: food
+              - date: "2026-01-04"
+                amount: 45000
+                type: EXPENSE
+                category: utilities
+              - date: "2026-01-05"
+                amount: 60000
+                type: EXPENSE
+                category: food
+              - date: "2026-01-06"
+                amount: 900000
+                type: EXPENSE
+                category: other
+      responses:
+        "200":
+          description: Anomaly detection result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnomalyResponse'
+              examples:
+                anomalies_found:
+                  summary: Outlier detected
+                  value:
+                    anomalies:
+                      - date: "2026-01-06"
+                        amount: 900000.0
+                    summary: "You spent unusually high on 1 day(s)"
+                not_enough_data:
+                  summary: Too few data points
+                  value:
+                    anomalies: []
+                    summary: "Not enough data for anomaly detection"
+
+  /forecast:
+    post:
+      summary: Spending forecast
+      description: >
+        Uses Facebook Prophet to predict future daily spending based on
+        historical expense transactions. Pass `periods` as a query parameter
+        to control how many days ahead to forecast (default 30). Falls back
+        to a daily-average projection when fewer than 2 data points exist.
+      parameters:
+        - name: periods
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 30
+            minimum: 1
+            maximum: 365
+          description: Number of days to forecast
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransactionList'
+            example:
+              - date: "2026-01-01"
+                amount: 50000
+                type: EXPENSE
+                category: food
+              - date: "2026-01-02"
+                amount: 75000
+                type: EXPENSE
+                category: transport
+              - date: "2026-01-03"
+                amount: 30000
+                type: EXPENSE
+                category: food
+      responses:
+        "200":
+          description: Forecast result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForecastResponse'
+              example:
+                predicted_monthly_spending: 1750000.0
+                daily_forecast:
+                  - date: "2026-02-01"
+                    predicted_amount: 52000.0
+                  - date: "2026-02-02"
+                    predicted_amount: 48000.0
+                  - date: "2026-02-03"
+                    predicted_amount: 55000.0
+
+components:
+  schemas:
+
+    Transaction:
+      type: object
+      required: [date, amount, type, category]
+      properties:
+        date:
+          type: string
+          format: date
+          description: Transaction date (YYYY-MM-DD)
+          example: "2026-01-15"
+        amount:
+          type: number
+          format: float
+          description: Transaction amount in smallest currency unit (e.g. kobo, cents)
+          example: 50000
+        type:
+          type: string
+          enum: [EXPENSE, INCOME]
+          description: INCOME transactions are ignored by all endpoints
+          example: EXPENSE
+        category:
+          type: string
+          description: Spending category label
+          example: food
+
+    TransactionList:
+      type: array
+      items:
+        $ref: '#/components/schemas/Transaction'
+      description: Array of transactions. Can be empty — all endpoints handle it gracefully.
+
+    AnalysisResponse:
+      type: object
+      properties:
+        total_expense:
+          type: number
+          description: Sum of all expense amounts
+        avg_daily:
+          type: number
+          description: Average daily expense total
+        top_category:
+          type: string
+          nullable: true
+          description: Category with highest total spend. Null if no data.
+        spending_distribution:
+          type: object
+          additionalProperties:
+            type: number
+          description: Per-category totals. Empty object if no data.
+
+    AnomalyRecord:
+      type: object
+      properties:
+        date:
+          type: string
+          description: Date of the anomalous day
+        amount:
+          type: number
+          description: Total spend on that day
+
+    AnomalyResponse:
+      type: object
+      properties:
+        anomalies:
+          type: array
+          items:
+            $ref: '#/components/schemas/AnomalyRecord'
+          description: List of flagged days. Empty if not enough data or no outliers.
+        summary:
+          type: string
+          description: Human-readable summary of the result
+
+    ForecastRecord:
+      type: object
+      properties:
+        date:
+          type: string
+          description: Forecasted date (YYYY-MM-DD)
+        predicted_amount:
+          type: number
+          description: Predicted daily spend. Always >= 0.
+
+    ForecastResponse:
+      type: object
+      properties:
+        predicted_monthly_spending:
+          type: number
+          description: Sum of all predicted daily amounts over the forecast window
+        daily_forecast:
+          type: array
+          items:
+            $ref: '#/components/schemas/ForecastRecord'
+          description: Day-by-day forecast. Length equals `periods` query param.

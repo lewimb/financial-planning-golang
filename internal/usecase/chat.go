@@ -83,11 +83,12 @@ func isRateLimitErr(err error) bool {
 // --- ChatUseCase ---
 
 type ChatUseCase struct {
-	txRepo     domain.TransactionRepository
-	budgetRepo domain.BudgetRepository
-	goalRepo   domain.GoalRepository
-	logRepo    domain.AiLogRepository
-	gemini     *GeminiClient
+	txRepo      domain.TransactionRepository
+	budgetRepo  domain.BudgetRepository
+	goalRepo    domain.GoalRepository
+	logRepo     domain.AiLogRepository
+	profileRepo domain.FinancialProfileRepository
+	gemini      *GeminiClient
 }
 
 func NewChatUseCase(
@@ -95,14 +96,16 @@ func NewChatUseCase(
 	budgetRepo domain.BudgetRepository,
 	goalRepo domain.GoalRepository,
 	logRepo domain.AiLogRepository,
+	profileRepo domain.FinancialProfileRepository,
 	gemini *GeminiClient,
 ) *ChatUseCase {
 	return &ChatUseCase{
-		txRepo:     txRepo,
-		budgetRepo: budgetRepo,
-		goalRepo:   goalRepo,
-		logRepo:    logRepo,
-		gemini:     gemini,
+		txRepo:      txRepo,
+		budgetRepo:  budgetRepo,
+		goalRepo:    goalRepo,
+		logRepo:     logRepo,
+		profileRepo: profileRepo,
+		gemini:      gemini,
 	}
 }
 
@@ -123,11 +126,17 @@ func (uc *ChatUseCase) Ask(ctx context.Context, userID int, message string) (str
 
 	activeGoals, _ := uc.goalRepo.GetAll(userID, true)
 
+	profileSection := ""
+	if profile, err := uc.profileRepo.GetByUserID(userID); err == nil {
+		profile.NetAvailable = profile.MonthlyIncome - profile.FixedExpenses - profile.Debt
+		profileSection = "\n" + BuildFinancialProfileContext(profile)
+	}
+
 	prompt := fmt.Sprintf(`You are a helpful financial assistant. Answer the user's question based on their financial data below.
 Respond in the same language the user writes in (Indonesian or English).
 Be concise and actionable.
-
-Financial Data (current month: %s %d):
+%s
+Transaction Data (current month: %s %d):
 - Monthly income: %.0f
 - Monthly expense: %.0f
 - Net savings (all-time): %.0f
@@ -135,6 +144,7 @@ Financial Data (current month: %s %d):
 - Active financial goals: %d
 
 User question: %s`,
+		profileSection,
 		now.Month().String(), now.Year(),
 		income, expense, netSavings,
 		len(budgetUsage), exceeded,

@@ -8,6 +8,7 @@ import (
 	"os"
 
 	delivery "github.com/financial-planning/internal/delivery/http"
+	"github.com/financial-planning/internal/ml"
 	"github.com/financial-planning/internal/repository/postgres"
 	"github.com/financial-planning/internal/usecase"
 	"github.com/gin-gonic/gin"
@@ -72,30 +73,36 @@ func main() {
 	defer db.Close()
 
 	// repositories
-	userRepo := postgres.NewUserRepository(db)
-	txRepo := postgres.NewTransactionRepository(db)
-	budgetRepo := postgres.NewBudgetRepository(db)
-	goalRepo := postgres.NewGoalRepository(db)
-	aiLogRepo := postgres.NewAiLogRepository(db)
+	userRepo        := postgres.NewUserRepository(db)
+	txRepo          := postgres.NewTransactionRepository(db)
+	budgetRepo      := postgres.NewBudgetRepository(db)
+	goalRepo        := postgres.NewGoalRepository(db)
+	aiLogRepo       := postgres.NewAiLogRepository(db)
+	profileRepo     := postgres.NewFinancialProfileRepository(db)
 
 	// use cases
-	userUC := usecase.NewUserUseCase(userRepo)
-	txUC := usecase.NewTransactionUseCase(txRepo)
-	budgetUC := usecase.NewBudgetUseCase(budgetRepo)
-	goalUC := usecase.NewGoalUseCase(goalRepo, txRepo)
+	userUC      := usecase.NewUserUseCase(userRepo)
+	txUC        := usecase.NewTransactionUseCase(txRepo)
+	budgetUC    := usecase.NewBudgetUseCase(budgetRepo)
+	goalUC      := usecase.NewGoalUseCase(goalRepo, txRepo)
 	dashboardUC := usecase.NewDashboardUseCase(txRepo, budgetRepo, goalRepo)
-	chatUC := usecase.NewChatUseCase(txRepo, budgetRepo, goalRepo, aiLogRepo, gemini)
+	chatUC      := usecase.NewChatUseCase(txRepo, budgetRepo, goalRepo, aiLogRepo, profileRepo, gemini)
+	mlClient    := ml.NewClient()
+	mlUC        := usecase.NewMLUseCase(txRepo, mlClient)
+	profileUC   := usecase.NewFinancialProfileUseCase(profileRepo)
 
 	// delivery
 	r := gin.Default()
 	r.Use(corsMiddleware())
 	delivery.Setup(r, delivery.Deps{
-		UserUC:        userUC,
-		TransactionUC: txUC,
-		BudgetUC:      budgetUC,
-		GoalUC:        goalUC,
-		DashboardUC:   dashboardUC,
-		ChatUC:        chatUC,
+		UserUC:             userUC,
+		TransactionUC:      txUC,
+		BudgetUC:           budgetUC,
+		GoalUC:             goalUC,
+		DashboardUC:        dashboardUC,
+		ChatUC:             chatUC,
+		MLUC:               mlUC,
+		FinancialProfileUC: profileUC,
 	})
 
 	fmt.Println("Server is running on port 8080")
