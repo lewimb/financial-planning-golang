@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Financial Planning API
-  version: 1.2.0
+  version: 1.3.0
   description: >
     REST API for the Financial Planning backend (Go/Gin).
     All `/api/auth/v1/…` routes require a valid JWT supplied either as an
@@ -126,12 +126,21 @@ components:
           format: date-time
         description:
           type: string
+        is_recurring:
+          type: boolean
+          default: false
+          description: Mark this transaction as recurring
+        recurrence_interval:
+          type: string
+          enum: [DAILY, WEEKLY, MONTHLY, YEARLY]
+          description: Required when is_recurring is true
       example:
         amount: 500000
         category: "Food"
         type: "EXPENSE"
         date: "2025-05-01T00:00:00Z"
         description: "Lunch"
+        is_recurring: false
 
     TransactionResponse:
       type: object
@@ -151,6 +160,11 @@ components:
           format: date-time
         description:
           type: string
+        is_recurring:
+          type: boolean
+        recurrence_interval:
+          type: string
+          nullable: true
 
     TransactionListResponse:
       type: object
@@ -394,6 +408,9 @@ components:
           description: Next 4 upcoming milestones ordered by deadline
           items:
             $ref: '#/components/schemas/GoalResponse'
+        completed_this_year:
+          type: integer
+          description: Number of goals completed in the current calendar year
 
     GoalContributionRequest:
       type: object
@@ -433,6 +450,29 @@ components:
         completed:
           type: integer
 
+    FinancialHealth:
+      type: object
+      properties:
+        score:
+          type: number
+          format: float
+          description: Overall financial health score 0–100
+        savings_rate:
+          type: number
+          format: float
+          description: Net savings as % of monthly income
+        budget_adherence:
+          type: number
+          format: float
+          description: Percentage of budgets with SAFE status
+        goal_progress:
+          type: number
+          format: float
+          description: Average goal completion percentage
+        label:
+          type: string
+          enum: [Excellent, Good, Fair, Needs Attention]
+
     DashboardResponse:
       type: object
       properties:
@@ -457,6 +497,11 @@ components:
           description: Goals with deadline >= now
           items:
             $ref: '#/components/schemas/GoalResponse'
+        financial_health:
+          $ref: '#/components/schemas/FinancialHealth'
+        has_anomalies:
+          type: boolean
+          description: True if any budget is currently EXCEEDED
       example:
         monthly_income: 5000000
         monthly_expense: 3200000
@@ -643,9 +688,16 @@ components:
           type: number
           format: double
           description: Total spend on that day
+        severity:
+          type: string
+          enum: [low, medium, high]
+          description: >
+            Z-score severity relative to all daily totals.
+            low = 1–2σ, medium = 2–3σ, high = ≥3σ.
       example:
         date: "2026-01-15"
         amount: 875000
+        severity: medium
 
     MLAnomalyResponse:
       type: object
@@ -654,15 +706,12 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/MLAnomalyRecord'
-          description: Days flagged as statistically unusual
-        summary:
-          type: string
-          description: Human-readable summary of anomaly results
+          description: Days flagged as statistically unusual. Empty if fewer than 5 expense days.
       example:
         anomalies:
           - date: "2026-01-15"
             amount: 875000
-        summary: "You spent unusually high on 1 day(s)"
+            severity: medium
 
     MLForecastRecord:
       type: object
@@ -686,6 +735,19 @@ components:
           type: number
           format: double
           description: Projected total spend for the forecast period
+        confidence:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          description: >
+            Average forecast certainty (0–1). Computed from Prophet uncertainty intervals.
+            0.0 when fewer than 2 data points exist.
+        trend:
+          type: string
+          enum: [increasing, decreasing, stable]
+          description: >
+            Forecast direction. increasing = >5% growth, decreasing = >5% drop, stable otherwise.
         daily_forecast:
           type: array
           items:
@@ -693,11 +755,46 @@ components:
           description: Day-by-day predicted spend
       example:
         predicted_monthly_spending: 1820000
+        confidence: 0.82
+        trend: stable
         daily_forecast:
           - date: "2026-02-01"
             predicted_amount: 58000
           - date: "2026-02-02"
             predicted_amount: 62000
+
+    MLInsightsResponse:
+      type: object
+      properties:
+        top_category:
+          type: string
+          nullable: true
+          description: Category with highest total spending. Null if no data or all amounts zero.
+        category_breakdown:
+          type: object
+          additionalProperties:
+            type: number
+            format: double
+          description: >
+            Percentage of total spending per category, rounded to 1 decimal place.
+            Values sum to approximately 100. Empty object if no data.
+          example:
+            food: 40.0
+            transport: 33.4
+            utilities: 26.6
+        spike_category:
+          type: string
+          nullable: true
+          description: >
+            Category with a statistically unusual spending day (z-score > 2.0, ddof=1).
+            Null if no spike detected or no category has at least 2 distinct days of data.
+      example:
+        top_category: food
+        category_breakdown:
+          food: 40.0
+          transport: 33.4
+          utilities: 26.6
+        spike_category: null
 
 paths:
   # ── Auth ────────────────────────────────────────────────────────────────────
@@ -1722,6 +1819,57 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /api/auth/v1/ml/insights:
+    get:
+      tags:
+        - ML
+      summary: Spending pattern insights
+      description: >
+        Fetches the authenticated user's transactions, forwards them to the ML
+        service (`POST /insights`), and returns category-level spending insights.
+        Returns the top spending category, percentage breakdown across categories,
+        and the category with a statistically unusual spending day (z-score > 2.0,
+        ddof=1). Spike detection requires at least 2 distinct days per category.
+        Filters by `year` and/or `month` when provided. Timeout: 10 s.
+        Returns 503 when the ML service is unreachable.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: year
+          in: query
+          required: false
+          schema:
+            type: string
+            example: "2026"
+          description: Filter transactions to this year (YYYY)
+        - name: month
+          in: query
+          required: false
+          schema:
+            type: string
+            example: "01"
+          description: Filter transactions to this month (MM); requires year
+      responses:
+        '200':
+          description: Category spending insights
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MLInsightsResponse'
+        '503':
+          description: ML service unreachable or returned an error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Unexpected server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   # ── Financial Profile ──────────────────────────────────────────────────────────
   /api/auth/v1/financial-profile:
     post:
@@ -1857,3 +2005,446 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+
+  # NEW ENDPOINTS (v1.3) ---------------------------------------------------
+
+  /api/auth/v1/users/me:
+    get:
+      tags: [Auth]
+      summary: Get current user profile
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Current user
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id: { type: integer }
+                      email: { type: string }
+                      name: { type: string }
+                      created_at: { type: string, format: date-time }
+
+  /api/auth/v1/transactions/monthly-summary:
+    get:
+      tags: [Transactions]
+      summary: Monthly income/expense summary (for DashboardGraph)
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - { name: months, in: query, schema: { type: integer, default: 6, minimum: 1, maximum: 24 } }
+      responses:
+        '200':
+          description: Monthly summary array
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        month: { type: integer }
+                        year: { type: integer }
+                        income: { type: number, format: float }
+                        expense: { type: number, format: float }
+                  months: { type: integer }
+
+  /api/auth/v1/transactions/export:
+    get:
+      tags: [Transactions]
+      summary: Export transactions as CSV
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - { name: month, in: query, schema: { type: string } }
+        - { name: year, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: CSV file
+          content:
+            text/csv:
+              schema: { type: string, format: binary }
+
+  /api/auth/v1/transactions/import:
+    post:
+      tags: [Transactions]
+      summary: Bulk import transactions (max 500)
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              maxItems: 500
+              items:
+                type: object
+                required: [amount, category, type, date]
+                properties:
+                  amount: { type: number }
+                  category: { type: string }
+                  type: { type: string, enum: [INCOME, EXPENSE] }
+                  date: { type: string, description: YYYY-MM-DD }
+                  description: { type: string }
+      responses:
+        '200':
+          description: Import result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      imported: { type: integer }
+                      failed: { type: integer }
+                      errors: { type: array, items: { type: string } }
+                  message: { type: string }
+
+  /api/auth/v1/chat/history:
+    get:
+      tags: [Chat]
+      summary: Get AI chat history
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Chat history (last 50, oldest first)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer }
+                        question: { type: string }
+                        response: { type: string }
+                        created_at: { type: string, format: date-time }
+    delete:
+      tags: [Chat]
+      summary: Clear chat history
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: History cleared
+          content:
+            application/json:
+              schema: { '$ref': '#/components/schemas/MessageResponse' }
+
+  /api/auth/v1/notifications:
+    get:
+      tags: [Notifications]
+      summary: List notifications
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - { name: unread_only, in: query, schema: { type: boolean, default: false } }
+      responses:
+        '200':
+          description: Notification list with unread count
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer }
+                        type: { type: string, enum: [BUDGET_WARNING, BUDGET_EXCEEDED, GOAL_DEADLINE, ANOMALY] }
+                        title: { type: string }
+                        message: { type: string }
+                        entity_type: { type: string, nullable: true }
+                        entity_id: { type: integer, nullable: true }
+                        is_read: { type: boolean }
+                        created_at: { type: string, format: date-time }
+                  unread_count: { type: integer }
+
+  /api/auth/v1/notifications/read-all:
+    patch:
+      tags: [Notifications]
+      summary: Mark all notifications as read
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: All read
+          content:
+            application/json:
+              schema: { '$ref': '#/components/schemas/MessageResponse' }
+
+  /api/auth/v1/notifications/{id}/read:
+    patch:
+      tags: [Notifications]
+      summary: Mark one notification as read
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: Marked read
+          content:
+            application/json:
+              schema: { '$ref': '#/components/schemas/MessageResponse' }
+
+  /api/auth/v1/notifications/{id}:
+    delete:
+      tags: [Notifications]
+      summary: Delete a notification
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: Deleted
+          content:
+            application/json:
+              schema: { '$ref': '#/components/schemas/MessageResponse' }
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema: { '$ref': '#/components/schemas/Error' }
+
+  /api/auth/v1/notifications/preferences:
+    get:
+      tags: [Notifications]
+      summary: Get notification preferences
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Preferences
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      budget_alerts: { type: boolean }
+                      goal_reminders: { type: boolean }
+                      anomaly_alerts: { type: boolean }
+    put:
+      tags: [Notifications]
+      summary: Update notification preferences
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                budget_alerts: { type: boolean }
+                goal_reminders: { type: boolean }
+                anomaly_alerts: { type: boolean }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { '$ref': '#/components/schemas/MessageResponse' }
+
+  /api/auth/v1/activity:
+    get:
+      tags: [Activity]
+      summary: Get activity/audit log
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, default: 20, maximum: 100 } }
+        - { name: offset, in: query, schema: { type: integer, default: 0 } }
+      responses:
+        '200':
+          description: Activity log
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer }
+                        action: { type: string, enum: [CREATE, UPDATE, DELETE, CONTRIBUTE, IMPORT] }
+                        entity_type: { type: string }
+                        entity_id: { type: integer, nullable: true }
+                        description: { type: string }
+                        created_at: { type: string, format: date-time }
+                  total: { type: integer }
+
+  /api/auth/v1/reports/monthly-summary:
+    get:
+      tags: [Reports]
+      summary: Monthly income/expense for Reports Overview
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - { name: months, in: query, schema: { type: integer, default: 6 } }
+      responses:
+        '200':
+          description: Monthly data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        month: { type: integer }
+                        year: { type: integer }
+                        income: { type: number }
+                        expense: { type: number }
+
+  /api/auth/v1/reports/category-breakdown:
+    get:
+      tags: [Reports]
+      summary: Expense breakdown by category as percentages
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - { name: year, in: query, schema: { type: string } }
+        - { name: month, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: Category percentages
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: { type: number, format: float }
+
+  /api/auth/v1/reports/savings-rate:
+    get:
+      tags: [Reports]
+      summary: Savings rate trend per month
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - { name: months, in: query, schema: { type: integer, default: 6 } }
+      responses:
+        '200':
+          description: Savings rate data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        month: { type: integer }
+                        year: { type: integer }
+                        savings_rate: { type: number, format: float }
+                        net_savings: { type: number }
+                        income: { type: number }
+
+  /api/auth/v1/reports/net-worth:
+    get:
+      tags: [Reports]
+      summary: Cumulative net worth trend
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - { name: months, in: query, schema: { type: integer, default: 12 } }
+      responses:
+        '200':
+          description: Net worth data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        month: { type: integer }
+                        year: { type: integer }
+                        net_worth: { type: number, format: float }
+
+  /api/auth/v1/reports/month-comparison:
+    get:
+      tags: [Reports]
+      summary: Compare current month vs previous month
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Month comparison
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      current_month:
+                        type: object
+                        properties:
+                          month: { type: integer }
+                          year: { type: integer }
+                          income: { type: number }
+                          expense: { type: number }
+                      previous_month:
+                        type: object
+                        properties:
+                          month: { type: integer }
+                          year: { type: integer }
+                          income: { type: number }
+                          expense: { type: number }
+                      income_change_pct: { type: number, format: float }
+                      expense_change_pct: { type: number, format: float }
+

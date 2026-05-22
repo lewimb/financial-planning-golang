@@ -510,7 +510,7 @@ No params — always uses current month on the server.
 
 ## 8. ML Insights
 
-All three endpoints are GET — the backend fetches transactions and calls the ML service internally. Frontend never sends transaction data to ML.
+All four endpoints are GET — the backend fetches transactions and calls the ML service internally. Frontend never sends transaction data to ML.
 
 > **503 handling:** All ML endpoints return 503 when the Python ML service is unreachable. Show a "ML insights unavailable" state rather than an error page. ML service must be running at port 8000.
 
@@ -546,13 +546,13 @@ GET /api/auth/v1/ml/anomaly?year=2026&month=05
 // Response
 {
   "anomalies": [
-    { "date": "2026-05-15", "amount": 2500000 }
-  ],
-  "summary": "You spent unusually high on 1 day(s)"
+    { "date": "2026-05-15", "amount": 2500000, "severity": "high" }
+  ]
 }
 ```
 
-Empty `anomalies: []` = no unusual days. Requires at least 5 unique expense days in the data.
+`severity` values: `"low"` (1–2σ), `"medium"` (2–3σ), `"high"` (≥3σ).  
+Empty `anomalies: []` = no unusual days. Requires at least 5 unique expense days.
 
 ---
 
@@ -566,6 +566,8 @@ GET /api/auth/v1/ml/forecast?periods=30
 // Response
 {
   "predicted_monthly_spending": 3500000,
+  "confidence": 0.82,
+  "trend": "stable",
   "daily_forecast": [
     { "date": "2026-05-20", "predicted_amount": 120000 },
     { "date": "2026-05-21", "predicted_amount": 95000 }
@@ -573,9 +575,43 @@ GET /api/auth/v1/ml/forecast?periods=30
 }
 ```
 
-`periods` = days ahead (1–365, default 30). Forecast accuracy improves with 30+ days of history.
+`periods` = days ahead (1–365, default 30).  
+`confidence` = 0–1 forecast certainty (0.0 when fewer than 2 data points).  
+`trend` values: `"increasing"` / `"decreasing"` / `"stable"` (>5% change threshold).
 
-> ⚠️ **Timeout:** Forecast can take up to **60 seconds**. Show a persistent loading skeleton (not a toast spinner) and do not retry automatically. Accuracy improves significantly with 30+ days of history — warn the user if they have fewer records.
+> ⚠️ **Timeout:** Forecast can take up to **60 seconds**. Show a persistent loading skeleton (not a toast spinner) and do not retry automatically. Warn the user if they have fewer than 30 days of history.
+
+---
+
+### Spending Pattern Insights
+
+```
+GET /api/auth/v1/ml/insights?year=2026&month=05
+```
+
+```json
+// Response — with spike detected
+{
+  "top_category": "food",
+  "category_breakdown": {
+    "food": 43.8,
+    "transport": 28.1,
+    "utilities": 28.1
+  },
+  "spike_category": "food"
+}
+
+// Response — no data
+{
+  "top_category": null,
+  "category_breakdown": {},
+  "spike_category": null
+}
+```
+
+`category_breakdown` values are percentages summing to ~100.  
+`spike_category` = category with a statistically unusual single-day spike (z-score > 2.0). Null if no spike or if any category has fewer than 2 days of data.  
+`top_category` and `spike_category` are nullable — always null-check before rendering.
 
 ---
 
@@ -607,7 +643,7 @@ Responds in the same language the user writes in (Indonesian or English).
 |---|---|---|
 | **Register / Login** | Entry point | `POST /register`, `POST /login` |
 | **Onboarding** | Financial profile form (first-time, multi-step) | `POST /financial-profile` |
-| **Dashboard** | Overview of finances + ML insights | `GET /dashboard`, `GET /ml/analysis`, `GET /ml/anomaly` |
+| **Dashboard** | Overview of finances + ML insights | `GET /dashboard`, `GET /ml/analysis`, `GET /ml/anomaly`, `GET /ml/insights` |
 | **Transactions** | List + add income/expense | `GET /transactions`, `POST /transactions`, `PUT /transactions/:id`, `DELETE /transactions/:id` |
 | **Budgets** | Create budgets + view usage | `GET /budgets/usage`, `POST /budgets`, `PUT /budgets/:id`, `DELETE /budgets/:id` |
 | **Goals** | Track savings goals + contribute | `GET /goals`, `POST /goals`, `PUT /goals/:id`, `DELETE /goals/:id`, `PATCH /goals/contribute` |
@@ -642,7 +678,7 @@ Frontend
   ↓ accessToken cookie (httpOnly) or Authorization: Bearer <token>
 Go Backend (port 8080)
   ├── Reads/writes PostgreSQL (transactions, budgets, goals, profile)
-  ├── Calls ML Service (port 8000) for analysis, anomaly, forecast
+  ├── Calls ML Service (port 8000) for analysis, anomaly, forecast, insights
   │     ML Service is stateless — backend sends full transaction list each time
   └── Calls Gemini API for AI chat responses
   ↓
@@ -675,6 +711,7 @@ All errors return: `{ "error": "description" }`
 - **Goal contribution** sets `current_amount` directly — not an increment. To add Rp 200k to an existing Rp 3M goal, send `{ goal_id: 1, contribution: 3200000 }`.
 - **`/goals/overview` goals array** is identical to `/goals/milestones`. Avoid both calls — use the overview data for milestones.
 - **Pagination:** `GET /transactions?limit=10&offset=0`. Total pages = `Math.ceil(total / limit)`.
-- **ML timeout:** forecast can take up to 60 seconds. Show persistent loading state.
+- **ML timeouts:** forecast up to 60 s (show persistent skeleton); analysis, anomaly, insights up to 10 s (standard loading state). Never auto-retry ML endpoints.
+- **ML anomaly `summary` removed:** response no longer includes a `summary` string — derive display text from `anomalies.length` client-side.
 - **Profile goals vs savings goals:** `financial_goals` in the profile (strings like `"house"`) are different from Goals (savings targets with amounts and deadlines).
 - **`/api/v1/users`** — unauthenticated endpoint. Internal debug use only; do not expose in production UI.

@@ -3,16 +3,16 @@ info:
   title: Financial Planning ML Service
   description: >
     Stateless ML service exposing spending analysis, anomaly detection,
-    and forecasting. Accepts raw transaction arrays; returns structured results.
-    Designed to be called by a Go backend — no auth, no DB, no state.
-  version: 1.0.0
+    forecasting, and spending insights. Accepts raw transaction arrays; returns
+    structured results. Designed to be called by a Go backend — no auth, no DB,
+    no state.
+  version: 2.0.0
 
 servers:
   - url: http://localhost:8000
     description: Local development
 
 paths:
-
   /analysis:
     post:
       summary: Spending analysis
@@ -25,7 +25,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/TransactionList'
+              $ref: "#/components/schemas/TransactionList"
             example:
               - date: "2026-01-01"
                 amount: 50000
@@ -49,7 +49,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AnalysisResponse'
+                $ref: "#/components/schemas/AnalysisResponse"
               example:
                 total_expense: 155000.0
                 avg_daily: 51666.67
@@ -63,14 +63,15 @@ paths:
       summary: Anomaly detection
       description: >
         Uses IsolationForest on daily expense totals to flag statistically
-        unusual spending days. Requires at least 5 expense days; returns
-        empty list otherwise.
+        unusual spending days. Severity is assigned via z-score of each
+        flagged day against all daily totals (1–2σ low, 2–3σ medium, ≥3σ high).
+        Requires at least 5 expense days; returns empty list otherwise.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/TransactionList'
+              $ref: "#/components/schemas/TransactionList"
             example:
               - date: "2026-01-01"
                 amount: 50000
@@ -102,7 +103,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AnomalyResponse'
+                $ref: "#/components/schemas/AnomalyResponse"
               examples:
                 anomalies_found:
                   summary: Outlier detected
@@ -110,12 +111,11 @@ paths:
                     anomalies:
                       - date: "2026-01-06"
                         amount: 900000.0
-                    summary: "You spent unusually high on 1 day(s)"
+                        severity: medium
                 not_enough_data:
                   summary: Too few data points
                   value:
                     anomalies: []
-                    summary: "Not enough data for anomaly detection"
 
   /forecast:
     post:
@@ -125,6 +125,8 @@ paths:
         historical expense transactions. Pass `periods` as a query parameter
         to control how many days ahead to forecast (default 30). Falls back
         to a daily-average projection when fewer than 2 data points exist.
+        Returns a confidence score (normalized Prophet uncertainty interval)
+        and a trend label derived from first-half vs second-half forecast means.
       parameters:
         - name: periods
           in: query
@@ -140,7 +142,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/TransactionList'
+              $ref: "#/components/schemas/TransactionList"
             example:
               - date: "2026-01-01"
                 amount: 50000
@@ -160,9 +162,11 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ForecastResponse'
+                $ref: "#/components/schemas/ForecastResponse"
               example:
                 predicted_monthly_spending: 1750000.0
+                confidence: 0.82
+                trend: increasing
                 daily_forecast:
                   - date: "2026-02-01"
                     predicted_amount: 52000.0
@@ -171,9 +175,84 @@ paths:
                   - date: "2026-02-03"
                     predicted_amount: 55000.0
 
+  /insights:
+    post:
+      summary: Spending pattern insights
+      description: >
+        Analyzes category spending to identify the top category, percentage
+        breakdown across all categories, and any category with a statistically
+        unusual spending day. Spike detection uses z-score per category
+        (threshold z > 2.0, ddof=1); categories with fewer than 2 distinct
+        days or zero variance are excluded. Returns null for spike_category
+        if no spike is detected. Returns null top_category and empty breakdown
+        on zero-amount or empty input.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TransactionList"
+            example:
+              - date: "2026-01-01"
+                amount: 50000
+                type: EXPENSE
+                category: food
+              - date: "2026-01-02"
+                amount: 75000
+                type: EXPENSE
+                category: transport
+              - date: "2026-01-03"
+                amount: 30000
+                type: EXPENSE
+                category: food
+              - date: "2026-01-04"
+                amount: 45000
+                type: EXPENSE
+                category: utilities
+              - date: "2026-01-05"
+                amount: 60000
+                type: EXPENSE
+                category: food
+              - date: "2026-01-06"
+                amount: 900000
+                type: EXPENSE
+                category: shopping
+      responses:
+        "200":
+          description: Spending insights
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InsightsResponse"
+              examples:
+                with_spike:
+                  summary: Spike detected
+                  value:
+                    top_category: food
+                    category_breakdown:
+                      food: 40.0
+                      transport: 20.0
+                      utilities: 15.0
+                      shopping: 25.0
+                    spike_category: shopping
+                no_spike:
+                  summary: No spike
+                  value:
+                    top_category: food
+                    category_breakdown:
+                      food: 50.0
+                      transport: 30.0
+                      utilities: 20.0
+                    spike_category: null
+                empty:
+                  summary: No data
+                  value:
+                    top_category: null
+                    category_breakdown: {}
+                    spike_category: null
+
 components:
   schemas:
-
     Transaction:
       type: object
       required: [date, amount, type, category]
@@ -201,7 +280,7 @@ components:
     TransactionList:
       type: array
       items:
-        $ref: '#/components/schemas/Transaction'
+        $ref: "#/components/schemas/Transaction"
       description: Array of transactions. Can be empty — all endpoints handle it gracefully.
 
     AnalysisResponse:
@@ -232,6 +311,12 @@ components:
         amount:
           type: number
           description: Total spend on that day
+        severity:
+          type: string
+          enum: [low, medium, high]
+          description: >
+            Z-score severity of the anomaly relative to all daily totals.
+            low = 1–2σ, medium = 2–3σ, high = ≥3σ.
 
     AnomalyResponse:
       type: object
@@ -239,11 +324,8 @@ components:
         anomalies:
           type: array
           items:
-            $ref: '#/components/schemas/AnomalyRecord'
+            $ref: "#/components/schemas/AnomalyRecord"
           description: List of flagged days. Empty if not enough data or no outliers.
-        summary:
-          type: string
-          description: Human-readable summary of the result
 
     ForecastRecord:
       type: object
@@ -261,8 +343,52 @@ components:
         predicted_monthly_spending:
           type: number
           description: Sum of all predicted daily amounts over the forecast window
+        confidence:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          description: >
+            Average forecast certainty across predicted days. Computed as
+            1 - (yhat_upper - yhat_lower) / yhat per day, averaged and clamped
+            to [0, 1]. 0.0 when Prophet uncertainty data is unavailable
+            (empty input or single data point).
+        trend:
+          type: string
+          enum: [increasing, decreasing, stable]
+          description: >
+            Direction of forecast. Compares mean of second half of forecast
+            window to first half. increasing = >5% growth, decreasing = >5%
+            drop, stable otherwise.
         daily_forecast:
           type: array
           items:
-            $ref: '#/components/schemas/ForecastRecord'
+            $ref: "#/components/schemas/ForecastRecord"
           description: Day-by-day forecast. Length equals `periods` query param.
+
+    InsightsResponse:
+      type: object
+      properties:
+        top_category:
+          type: string
+          nullable: true
+          description: Category with highest total spending. Null if no data or all amounts zero.
+        category_breakdown:
+          type: object
+          additionalProperties:
+            type: number
+          description: >
+            Percentage of total spending per category, rounded to 1 decimal place.
+            Values sum to approximately 100. Empty object if no data.
+          example:
+            food: 40.0
+            transport: 33.4
+            utilities: 26.6
+        spike_category:
+          type: string
+          nullable: true
+          description: >
+            Category with a statistically unusual spending day (z-score > 2.0
+            using sample std, ddof=1). Among candidates, returns the one with
+            the highest max z-score. Null if no spike detected, or if no
+            category has at least 2 distinct days of data.
