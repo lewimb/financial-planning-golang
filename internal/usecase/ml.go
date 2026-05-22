@@ -3,6 +3,7 @@ package usecase
 import (
 	"errors"
 	"fmt"
+	"log"
 
 	"github.com/financial-planning/internal/domain"
 	"github.com/financial-planning/internal/ml"
@@ -27,6 +28,7 @@ func NewMLUseCase(txRepo domain.TransactionRepository, client *ml.Client) *MLUse
 func (uc *MLUseCase) fetchMLTransactions(userID int, year, month string) ([]ml.Transaction, error) {
 	txs, _, err := uc.txRepo.GetByUserID(userID, 0, 0, year, month)
 	if err != nil {
+		log.Printf("ml: fetchMLTransactions userID=%d: %v", userID, err)
 		return nil, fmt.Errorf("ml usecase: fetch transactions: %w", err)
 	}
 
@@ -51,6 +53,7 @@ func (uc *MLUseCase) GetAnalysis(userID int, year, month string) (*ml.AnalysisRe
 	}
 	result, err := uc.client.Analysis(txs)
 	if err != nil {
+		log.Printf("ml: GetAnalysis userID=%d: %v", userID, err)
 		return nil, ErrMLUnavailable
 	}
 	return result, nil
@@ -65,6 +68,7 @@ func (uc *MLUseCase) GetAnomaly(userID int, year, month string) (*ml.AnomalyResp
 	}
 	result, err := uc.client.Anomaly(txs)
 	if err != nil {
+		log.Printf("ml: GetAnomaly userID=%d: %v", userID, err)
 		return nil, ErrMLUnavailable
 	}
 	return result, nil
@@ -79,6 +83,21 @@ func (uc *MLUseCase) GetForecast(userID int, periods int, year, month string) (*
 	}
 	result, err := uc.client.Forecast(txs, periods)
 	if err != nil {
+		log.Printf("ml: GetForecast userID=%d periods=%d: %v", userID, periods, err)
+		return nil, ErrMLUnavailable
+	}
+	return result, nil
+}
+
+// GetInsights fetches the user's transactions and returns spending pattern insights.
+func (uc *MLUseCase) GetInsights(userID int, year, month string) (*ml.InsightsResponse, error) {
+	txs, err := uc.fetchMLTransactions(userID, year, month)
+	if err != nil {
+		return nil, err
+	}
+	result, err := uc.client.Insights(txs)
+	if err != nil {
+		log.Printf("ml: GetInsights userID=%d: %v", userID, err)
 		return nil, ErrMLUnavailable
 	}
 	return result, nil

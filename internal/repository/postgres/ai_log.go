@@ -27,7 +27,8 @@ func (r *aiLogRepository) GetByUserID(userID int) ([]domain.AiLog, error) {
 		SELECT id, user_id, question, response, created_at
 		FROM ai_logs
 		WHERE user_id = $1 AND deleted_at IS NULL
-		ORDER BY created_at DESC
+		ORDER BY created_at ASC
+		LIMIT 50
 	`, userID)
 	if err != nil {
 		return nil, err
@@ -43,4 +44,9 @@ func (r *aiLogRepository) GetByUserID(userID int) ([]domain.AiLog, error) {
 		logs = append(logs, l)
 	}
 	return logs, rows.Err()
+}
+
+func (r *aiLogRepository) DeleteByUserID(userID int) error {
+	_, err := r.db.Exec(`UPDATE ai_logs SET deleted_at = NOW() WHERE user_id = $1 AND deleted_at IS NULL`, userID)
+	return err
 }

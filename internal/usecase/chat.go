@@ -109,6 +109,22 @@ func NewChatUseCase(
 	}
 }
 
+func (uc *ChatUseCase) GetHistory(userID int) ([]domain.AiLog, error) {
+	logs, err := uc.logRepo.GetByUserID(userID)
+	if err != nil {
+		log.Printf("chat: GetHistory userID=%d: %v", userID, err)
+	}
+	return logs, err
+}
+
+func (uc *ChatUseCase) ClearHistory(userID int) error {
+	if err := uc.logRepo.DeleteByUserID(userID); err != nil {
+		log.Printf("chat: ClearHistory userID=%d: %v", userID, err)
+		return err
+	}
+	return nil
+}
+
 func (uc *ChatUseCase) Ask(ctx context.Context, userID int, message string) (string, error) {
 	now := time.Now()
 

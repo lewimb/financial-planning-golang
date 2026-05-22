@@ -15,6 +15,7 @@ const (
 	analysisTimeout = 5 * time.Second
 	anomalyTimeout  = 10 * time.Second
 	forecastTimeout = 60 * time.Second
+	insightsTimeout = 10 * time.Second
 )
 
 // Client is an HTTP client for the ML service.
@@ -85,6 +86,18 @@ func (c *Client) Anomaly(transactions []Transaction) (*AnomalyResponse, error) {
 
 	var result AnomalyResponse
 	if err := c.post(ctx, "/anomaly", transactions, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// Insights calls POST /insights with a 10 s timeout.
+func (c *Client) Insights(transactions []Transaction) (*InsightsResponse, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), insightsTimeout)
+	defer cancel()
+
+	var result InsightsResponse
+	if err := c.post(ctx, "/insights", transactions, &result); err != nil {
 		return nil, err
 	}
 	return &result, nil

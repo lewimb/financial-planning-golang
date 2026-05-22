@@ -78,3 +78,21 @@ func (h *MLHandler) GetForecast(c *gin.Context) {
 
 	c.JSON(http.StatusOK, result)
 }
+
+func (h *MLHandler) GetInsights(c *gin.Context) {
+	userID := utils.ClaimId(c)
+	year := c.Query("year")
+	month := c.Query("month")
+
+	result, err := h.uc.GetInsights(userID, year, month)
+	if err != nil {
+		if errors.Is(err, usecase.ErrMLUnavailable) {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "ML service unavailable"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		return
+	}
+
+	c.JSON(http.StatusOK, result)
+}

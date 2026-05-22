@@ -39,3 +39,22 @@ func (h *ChatHandler) Ask(c *gin.Context) {
 
 	c.JSON(http.StatusOK, domain.ChatResponse{Reply: reply})
 }
+
+func (h *ChatHandler) GetHistory(c *gin.Context) {
+	userID := utils.ClaimId(c)
+	logs, err := h.uc.GetHistory(userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": logs})
+}
+
+func (h *ChatHandler) ClearHistory(c *gin.Context) {
+	userID := utils.ClaimId(c)
+	if err := h.uc.ClearHistory(userID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "chat history cleared"})
+}

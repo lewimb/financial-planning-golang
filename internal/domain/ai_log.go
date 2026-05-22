@@ -13,4 +13,5 @@ type AiLog struct {
 type AiLogRepository interface {
 	Save(userID int, question, response string) error
 	GetByUserID(userID int) ([]AiLog, error)
+	DeleteByUserID(userID int) error
 }
