@@ -3,6 +3,7 @@ package handler
 import (
 	"errors"
 	"fmt"
+	"net/http"
 
 	"github.com/financial-planning/internal/usecase"
 	"github.com/financial-planning/utils"
@@ -60,7 +61,13 @@ func (h *UserHandler) Login(c *gin.Context) {
 		c.JSON(500, gin.H{"error": "Login failed"})
 		return
 	}
-	c.SetCookie("accessToken", token, 3600, "/", "*", false, false)
+	secure := c.Request.TLS != nil
+	if secure {
+		c.SetSameSite(http.SameSiteNoneMode)
+	} else {
+		c.SetSameSite(http.SameSiteLaxMode)
+	}
+	c.SetCookie("accessToken", token, 3600, "/", "", secure, true)
 	c.JSON(200, gin.H{"message": "Login Successfully", "status": "200", "data": gin.H{"token": token}})
 }
 

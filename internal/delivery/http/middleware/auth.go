@@ -12,19 +12,30 @@ import (
 
 func AuthRequired() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		authToken := ""
+
 		authHeader := c.Request.Header.Get("Authorization")
-		if authHeader == "" {
+		if authHeader != "" {
+			arr := strings.Split(authHeader, " ")
+			if len(arr) != 2 {
+				c.JSON(401, gin.H{"error": "authorization header format must be Bearer {token}"})
+				c.Abort()
+				return
+			}
+			authToken = arr[1]
+		} else {
+			cookie, err := c.Cookie("accessToken")
+			if err == nil && cookie != "" {
+				authToken = cookie
+			}
+		}
+
+		if authToken == "" {
 			c.JSON(400, gin.H{"message": "Missing Authorization!", "code": 400})
 			c.Abort()
 			return
 		}
-		arr := strings.Split(authHeader, " ")
-		if len(arr) != 2 {
-			c.JSON(401, gin.H{"error": "authorization header format must be Bearer {token}"})
-			c.Abort()
-			return
-		}
-		authToken := arr[1]
+
 		claims := utils.MyCustomClaims{}
 		token, err := jwt.ParseWithClaims(authToken, &claims, func(token *jwt.Token) (interface{}, error) {
 			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
