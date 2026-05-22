@@ -29,6 +29,17 @@ func initDB(dbUser, dbPassword, dbName, dbHost, dbPort string) (*sql.DB, error) 
 	return db, nil
 }
 
+func skipOptionsLogger() gin.HandlerFunc {
+	logger := gin.Logger()
+	return func(c *gin.Context) {
+		if c.Request.Method == "OPTIONS" {
+			c.Next()
+			return
+		}
+		logger(c)
+	}
+}
+
 func corsMiddleware() gin.HandlerFunc {
 	origin := os.Getenv("CORS_ORIGIN")
 	if origin == "" {
@@ -97,8 +108,10 @@ func main() {
 	reportsUC      := usecase.NewReportsUseCase(txRepo, budgetRepo, goalRepo)
 
 	// delivery
-	r := gin.Default()
+	r := gin.New()
+	r.Use(gin.Recovery())
 	r.Use(corsMiddleware())
+	r.Use(skipOptionsLogger())
 	delivery.Setup(r, delivery.Deps{
 		UserUC:             userUC,
 		TransactionUC:      txUC,
