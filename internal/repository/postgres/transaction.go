@@ -18,7 +18,7 @@ func NewTransactionRepository(db *sql.DB) domain.TransactionRepository {
 }
 
 func (r *transactionRepository) GetByUserID(userID, limit, offset int, year, month string) ([]domain.TransactionResponse, int, error) {
-	query := `SELECT id, amount, category, type, "date"::date, description FROM transactions WHERE user_id=$1 AND deleted_at IS NULL`
+	query := `SELECT id, amount, category, type, "date"::date, description, is_recurring, COALESCE(recurrence_interval, '') FROM transactions WHERE user_id=$1 AND deleted_at IS NULL`
 	args := []interface{}{userID}
 
 	if month != "" && year != "" {
@@ -69,7 +69,7 @@ func (r *transactionRepository) GetByUserID(userID, limit, offset int, year, mon
 	var transactions []domain.TransactionResponse
 	for rows.Next() {
 		var t domain.TransactionResponse
-		if err := rows.Scan(&t.ID, &t.Amount, &t.Category, &t.Type, &t.Date, &t.Description); err != nil {
+		if err := rows.Scan(&t.ID, &t.Amount, &t.Category, &t.Type, &t.Date, &t.Description, &t.IsRecurring, &t.RecurrenceInterval); err != nil {
 			return nil, 0, fmt.Errorf("scan error: %v", err)
 		}
 		transactions = append(transactions, t)
@@ -79,8 +79,10 @@ func (r *transactionRepository) GetByUserID(userID, limit, offset int, year, mon
 
 func (r *transactionRepository) Create(userID int, req domain.TransactionRequest) error {
 	_, err := r.db.Exec(
-		"INSERT INTO transactions (amount, category, type, date, description, user_id) VALUES ($1, $2, $3, $4, $5, $6)",
+		`INSERT INTO transactions (amount, category, type, date, description, user_id, is_recurring, recurrence_interval)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, NULLIF($8, ''))`,
 		req.Amount, req.Category, req.Type, req.Date, req.Description, userID,
+		req.IsRecurring, req.RecurrenceInterval,
 	)
 	return err
 }
@@ -151,6 +153,66 @@ func (r *transactionRepository) GetMonthlyIncome(userID int) (float64, error) {
 		AND deleted_at IS NULL
 	`, userID, int(now.Month()), now.Year()).Scan(&total)
 	return total, err
+}
+
+func (r *transactionRepository) GetMonthlySummary(userID int, months int) ([]domain.MonthlySummaryItem, error) {
+	if months <= 0 {
+		months = 6
+	}
+	rows, err := r.db.Query(`
+		SELECT
+			EXTRACT(MONTH FROM date)::int AS month,
+			EXTRACT(YEAR FROM date)::int  AS year,
+			COALESCE(SUM(CASE WHEN type = 'INCOME'  THEN amount ELSE 0 END), 0) AS income,
+			COALESCE(SUM(CASE WHEN type = 'EXPENSE' THEN amount ELSE 0 END), 0) AS expense
+		FROM transactions
+		WHERE user_id = $1
+		  AND deleted_at IS NULL
+		  AND date >= DATE_TRUNC('month', NOW()) - ($2 - 1) * INTERVAL '1 month'
+		GROUP BY EXTRACT(YEAR FROM date), EXTRACT(MONTH FROM date)
+		ORDER BY year ASC, month ASC
+	`, userID, months)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []domain.MonthlySummaryItem
+	for rows.Next() {
+		var item domain.MonthlySummaryItem
+		if err := rows.Scan(&item.Month, &item.Year, &item.Income, &item.Expense); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (r *transactionRepository) BulkCreate(userID int, reqs []domain.TransactionRequest) error {
+	tx, err := r.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.Prepare(
+		`INSERT INTO transactions (amount, category, type, date, description, user_id, is_recurring, recurrence_interval)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, NULLIF($8, ''))`,
+	)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for _, req := range reqs {
+		if _, err := stmt.Exec(
+			req.Amount, req.Category, req.Type, req.Date, req.Description, userID,
+			req.IsRecurring, req.RecurrenceInterval,
+		); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 func (r *transactionRepository) GetNetSavings(userID int) (float64, error) {
