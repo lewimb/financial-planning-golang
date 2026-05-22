@@ -45,6 +45,17 @@ func (r *userRepository) FindByEmail(email string) (*domain.User, error) {
 	return &u, nil
 }
 
+func (r *userRepository) GetByID(id int) (*domain.UserResponse, error) {
+	var u domain.UserResponse
+	err := r.db.QueryRow(
+		"SELECT id, email, name, created_at, deleted_at, password FROM users WHERE id = $1 AND deleted_at IS NULL", id,
+	).Scan(&u.ID, &u.Email, &u.Name, &u.CreatedAt, &u.DeletedAt, &u.Password)
+	if err != nil {
+		return nil, err
+	}
+	return &u, nil
+}
+
 func (r *userRepository) Create(email, hashedPassword, name string) error {
 	_, err := r.db.Exec(
 		"INSERT INTO users (email, password, name) VALUES ($1, $2, $3)",

@@ -21,5 +21,6 @@ type UserResponse struct {
 type UserRepository interface {
 	GetAll() ([]UserResponse, error)
 	FindByEmail(email string) (*User, error)
+	GetByID(id int) (*UserResponse, error)
 	Create(email, hashedPassword, name string) error
 }

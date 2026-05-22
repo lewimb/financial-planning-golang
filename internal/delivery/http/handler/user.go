@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/financial-planning/internal/usecase"
+	"github.com/financial-planning/utils"
 	"github.com/gin-gonic/gin"
 )
 
@@ -70,4 +71,21 @@ func (h *UserHandler) GetAll(c *gin.Context) {
 		return
 	}
 	c.JSON(200, gin.H{"data": users, "status": "200", "message": "Get all users successfully"})
+}
+
+func (h *UserHandler) GetMe(c *gin.Context) {
+	userID := utils.ClaimId(c)
+	user, err := h.uc.GetMe(userID)
+	if err != nil {
+		c.JSON(404, gin.H{"error": "user not found"})
+		return
+	}
+	c.JSON(200, gin.H{
+		"data": gin.H{
+			"id":         user.ID,
+			"email":      user.Email,
+			"name":       user.Name,
+			"created_at": user.CreatedAt,
+		},
+	})
 }
