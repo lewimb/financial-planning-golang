@@ -30,8 +30,12 @@ func initDB(dbUser, dbPassword, dbName, dbHost, dbPort string) (*sql.DB, error) 
 }
 
 func corsMiddleware() gin.HandlerFunc {
+	origin := os.Getenv("CORS_ORIGIN")
+	if origin == "" {
+		origin = "http://localhost:5173"
+	}
 	return func(c *gin.Context) {
-		c.Header("Access-Control-Allow-Origin", "http://localhost:5173")
+		c.Header("Access-Control-Allow-Origin", origin)
 		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 		c.Header("Access-Control-Allow-Headers", "Origin, Content-Type, Authorization, Accept")
 		c.Header("Access-Control-Expose-Headers", "Content-Length")

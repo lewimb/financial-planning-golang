@@ -43,9 +43,11 @@ DB_HOST=localhost
 DB_PORT=5432
 SECRET_KEY=<jwt-signing-secret>
 GEMINI_API_KEY=<gemini-api-key>
+CORS_ORIGIN=http://localhost:5173
 ```
 
 `GEMINI_API_KEY` is used by `ChatUseCase` to call the Gemini REST API for the AI chatbot endpoint.
+`CORS_ORIGIN` sets the `Access-Control-Allow-Origin` header (defaults to `http://localhost:5173`).
 
 Database migrations in `db/migrations/` use golang-migrate format (`NNNNN_desc.up.sql` / `.down.sql`). Run them manually or wire up the migrate CLI.
 
@@ -117,7 +119,7 @@ chatUC      := usecase.NewChatUseCase(txRepo, budgetRepo, goalRepo)
 | GET | `/api/auth/v1/dashboard` | JWT | Aggregated dashboard: income, expense, savings, budget summary, goals |
 | POST | `/api/auth/v1/chat` | JWT | AI chatbot — ask questions about your finances |
 
-CORS is hardcoded to `http://localhost:5173` in `main.go`.
+CORS origin is configured via `CORS_ORIGIN` env var (defaults to `http://localhost:5173` in `main.go`).
 
 ## Authentication
 
