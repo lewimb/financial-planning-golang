@@ -61,7 +61,7 @@ func (h *UserHandler) Login(c *gin.Context) {
 		c.JSON(500, gin.H{"error": "Login failed"})
 		return
 	}
-	secure := c.Request.TLS != nil
+	secure := c.Request.TLS != nil || c.Request.Header.Get("X-Forwarded-Proto") == "https"
 	if secure {
 		c.SetSameSite(http.SameSiteNoneMode)
 	} else {

@@ -56,6 +56,7 @@ func (uc *UserUseCase) Register(email, password, name string) error {
 func (uc *UserUseCase) Login(email, password string) (string, error) {
 	user, err := uc.repo.FindByEmail(email)
 	if err != nil {
+		fmt.Printf("user: Login FindByEmail email=%s: %v", email, err)
 		log.Printf("user: Login FindByEmail email=%s: %v", email, err)
 		return "", ErrInvalidCredentials
 	}
