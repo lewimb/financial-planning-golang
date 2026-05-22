@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"errors"
+	"log"
 	"time"
 
 	"github.com/financial-planning/internal/domain"
@@ -17,30 +18,47 @@ func NewGoalUseCase(repo domain.GoalRepository, txRepo domain.TransactionReposit
 }
 
 func (uc *GoalUseCase) GetGoals(userID int, active bool) ([]domain.GoalResponse, error) {
-	return uc.repo.GetAll(userID, active)
+	goals, err := uc.repo.GetAll(userID, active)
+	if err != nil {
+		log.Printf("goal: GetGoals userID=%d active=%v: %v", userID, active, err)
+	}
+	return goals, err
 }
 
 func (uc *GoalUseCase) GetByID(id, userID int) (*domain.GoalResponse, error) {
-	return uc.repo.GetByID(id, userID)
+	g, err := uc.repo.GetByID(id, userID)
+	if err != nil {
+		log.Printf("goal: GetByID id=%d userID=%d: %v", id, userID, err)
+	}
+	return g, err
 }
 
 func (uc *GoalUseCase) GetOverview(userID int) (*domain.GoalOverviewResponse, error) {
 	savings, err := uc.repo.GetSavingsTotal(userID)
 	if err != nil {
+		log.Printf("goal: GetOverview GetSavingsTotal userID=%d: %v", userID, err)
 		return nil, err
 	}
 	milestones, err := uc.repo.GetUpcomingMilestones(userID)
 	if err != nil {
+		log.Printf("goal: GetOverview GetUpcomingMilestones userID=%d: %v", userID, err)
 		return nil, err
 	}
 	total, err := uc.repo.CountActive(userID)
 	if err != nil {
+		log.Printf("goal: GetOverview CountActive userID=%d: %v", userID, err)
+		return nil, err
+	}
+	completedThisYear, err := uc.repo.CountCompletedThisYear(userID)
+	if err != nil {
+		log.Printf("goal: GetOverview CountCompletedThisYear userID=%d: %v", userID, err)
 		return nil, err
 	}
 	return &domain.GoalOverviewResponse{
-		TotalGoals: total,
-		Goals:      milestones,
-		Savings:    int(savings), // savings values are monetary amounts; truncation is acceptable
+		TotalGoals:        total,
+		Goals:             milestones,
+		Savings:           int(savings),
+		CompletedThisYear: completedThisYear,
 	}, nil
 }
 
@@ -54,7 +72,11 @@ func (uc *GoalUseCase) Create(userID int, req domain.CreateGoalRequest) error {
 	if req.Name == "" {
 		return errors.New("name is required")
 	}
-	return uc.repo.Create(userID, req)
+	if err := uc.repo.Create(userID, req); err != nil {
+		log.Printf("goal: Create userID=%d name=%s: %v", userID, req.Name, err)
+		return err
+	}
+	return nil
 }
 
 func (uc *GoalUseCase) Update(id, userID int, req domain.CreateGoalRequest) error {
@@ -64,11 +86,19 @@ func (uc *GoalUseCase) Update(id, userID int, req domain.CreateGoalRequest) erro
 	if req.Name == "" {
 		return errors.New("name is required")
 	}
-	return uc.repo.Update(id, userID, req)
+	if err := uc.repo.Update(id, userID, req); err != nil {
+		log.Printf("goal: Update id=%d userID=%d: %v", id, userID, err)
+		return err
+	}
+	return nil
 }
 
 func (uc *GoalUseCase) Delete(id, userID int) error {
-	return uc.repo.Delete(id, userID)
+	if err := uc.repo.Delete(id, userID); err != nil {
+		log.Printf("goal: Delete id=%d userID=%d: %v", id, userID, err)
+		return err
+	}
+	return nil
 }
 
 func (uc *GoalUseCase) Contribute(id, userID, amount int) error {
@@ -77,6 +107,7 @@ func (uc *GoalUseCase) Contribute(id, userID, amount int) error {
 	}
 	net, err := uc.txRepo.GetNetSavings(userID)
 	if err != nil {
+		log.Printf("goal: Contribute GetNetSavings userID=%d: %v", userID, err)
 		return err
 	}
 	if net <= 0 {
@@ -85,5 +116,9 @@ func (uc *GoalUseCase) Contribute(id, userID, amount int) error {
 	if amount > int(net) {
 		return errors.New("contribution exceeds available savings")
 	}
-	return uc.repo.Contribute(id, userID, amount)
+	if err := uc.repo.Contribute(id, userID, amount); err != nil {
+		log.Printf("goal: Contribute id=%d userID=%d amount=%d: %v", id, userID, amount, err)
+		return err
+	}
+	return nil
 }

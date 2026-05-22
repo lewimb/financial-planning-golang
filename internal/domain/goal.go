@@ -26,9 +26,10 @@ type GoalContributionRequest struct {
 }
 
 type GoalOverviewResponse struct {
-	TotalGoals int            `json:"total_goals"`
-	Savings    int            `json:"savings"`
-	Goals      []GoalResponse `json:"goals"`
+	TotalGoals         int            `json:"total_goals"`
+	Savings            int            `json:"savings"`
+	Goals              []GoalResponse `json:"goals"`
+	CompletedThisYear  int            `json:"completed_this_year"`
 }
 
 type GoalRepository interface {
@@ -36,6 +37,7 @@ type GoalRepository interface {
 	GetByID(id, userID int) (*GoalResponse, error)
 	GetSavingsTotal(userID int) (float64, error)
 	CountActive(userID int) (int, error)
+	CountCompletedThisYear(userID int) (int, error)
 	GetUpcomingMilestones(userID int) ([]GoalResponse, error)
 	Create(userID int, req CreateGoalRequest) error
 	Update(id, userID int, req CreateGoalRequest) error

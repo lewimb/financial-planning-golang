@@ -64,6 +64,17 @@ func (r *goalRepository) CountActive(userID int) (int, error) {
 	return count, err
 }
 
+func (r *goalRepository) CountCompletedThisYear(userID int) (int, error) {
+	var count int
+	err := r.db.QueryRow(`
+		SELECT COUNT(id) FROM goals
+		WHERE user_id = $1
+		  AND status = 'COMPLETED'
+		  AND EXTRACT(YEAR FROM updated_at) = EXTRACT(YEAR FROM NOW())
+	`, userID).Scan(&count)
+	return count, err
+}
+
 func (r *goalRepository) GetUpcomingMilestones(userID int) ([]domain.GoalResponse, error) {
 	rows, err := r.db.Query(`
 		SELECT id, name, description, target_amount, current_amount, deadline, created_at, status

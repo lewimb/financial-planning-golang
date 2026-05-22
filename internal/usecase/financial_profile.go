@@ -3,6 +3,7 @@ package usecase
 import (
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 
 	"github.com/financial-planning/internal/domain"
@@ -21,6 +22,7 @@ func (uc *FinancialProfileUseCase) Upsert(userID int, req domain.UpsertFinancial
 		return nil, err
 	}
 	if err := uc.repo.Upsert(userID, req); err != nil {
+		log.Printf("financial_profile: Upsert userID=%d: %v", userID, err)
 		return nil, err
 	}
 	return uc.Get(userID)
@@ -29,6 +31,7 @@ func (uc *FinancialProfileUseCase) Upsert(userID int, req domain.UpsertFinancial
 func (uc *FinancialProfileUseCase) Get(userID int) (*domain.FinancialProfileResponse, error) {
 	p, err := uc.repo.GetByUserID(userID)
 	if err != nil {
+		log.Printf("financial_profile: Get userID=%d: %v", userID, err)
 		return nil, err
 	}
 	p.NetAvailable = p.MonthlyIncome - p.FixedExpenses - p.Debt

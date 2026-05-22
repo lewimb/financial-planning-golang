@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"errors"
+	"log"
 
 	"github.com/financial-planning/internal/domain"
 )
@@ -15,15 +16,27 @@ func NewBudgetUseCase(repo domain.BudgetRepository) *BudgetUseCase {
 }
 
 func (uc *BudgetUseCase) GetBudgets(userID int, category, month, year string) ([]domain.Budget, error) {
-	return uc.repo.GetAll(userID, category, month, year)
+	budgets, err := uc.repo.GetAll(userID, category, month, year)
+	if err != nil {
+		log.Printf("budget: GetBudgets userID=%d: %v", userID, err)
+	}
+	return budgets, err
 }
 
 func (uc *BudgetUseCase) GetByID(id int) (*domain.BudgetResponse, error) {
-	return uc.repo.GetByID(id)
+	b, err := uc.repo.GetByID(id)
+	if err != nil {
+		log.Printf("budget: GetByID id=%d: %v", id, err)
+	}
+	return b, err
 }
 
 func (uc *BudgetUseCase) GetUsage(userID, month, year int) ([]domain.BudgetUsage, error) {
-	return uc.repo.GetUsage(userID, month, year)
+	usage, err := uc.repo.GetUsage(userID, month, year)
+	if err != nil {
+		log.Printf("budget: GetUsage userID=%d month=%d year=%d: %v", userID, month, year, err)
+	}
+	return usage, err
 }
 
 func (uc *BudgetUseCase) Create(userID int, req domain.CreateBudgetRequest) error {
@@ -48,13 +61,25 @@ func (uc *BudgetUseCase) Create(userID int, req domain.CreateBudgetRequest) erro
 	if req.AlertThreshold == 0 {
 		req.AlertThreshold = 80
 	}
-	return uc.repo.Create(userID, req)
+	if err := uc.repo.Create(userID, req); err != nil {
+		log.Printf("budget: Create userID=%d category=%s: %v", userID, req.Category, err)
+		return err
+	}
+	return nil
 }
 
 func (uc *BudgetUseCase) Update(userID, id, limitAmount, alertThreshold int, category string) (*domain.UpdateBudgetResponse, error) {
-	return uc.repo.Update(userID, id, limitAmount, alertThreshold, category)
+	resp, err := uc.repo.Update(userID, id, limitAmount, alertThreshold, category)
+	if err != nil {
+		log.Printf("budget: Update userID=%d id=%d: %v", userID, id, err)
+	}
+	return resp, err
 }
 
 func (uc *BudgetUseCase) Delete(userID, id int) error {
-	return uc.repo.Delete(userID, id)
+	if err := uc.repo.Delete(userID, id); err != nil {
+		log.Printf("budget: Delete userID=%d id=%d: %v", userID, id, err)
+		return err
+	}
+	return nil
 }
