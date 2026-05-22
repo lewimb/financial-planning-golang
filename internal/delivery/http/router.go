@@ -16,6 +16,9 @@ type Deps struct {
 	ChatUC             *usecase.ChatUseCase
 	MLUC               *usecase.MLUseCase
 	FinancialProfileUC *usecase.FinancialProfileUseCase
+	NotificationUC     *usecase.NotificationUseCase
+	ActivityLogUC      *usecase.ActivityLogUseCase
+	ReportsUC          *usecase.ReportsUseCase
 }
 
 func Setup(r *gin.Engine, deps Deps) {
@@ -26,11 +29,16 @@ func Setup(r *gin.Engine, deps Deps) {
 
 	api := r.Group("/api/auth/v1", middleware.AuthRequired())
 
-	txH := handler.NewTransactionHandler(deps.TransactionUC)
+	api.GET("/users/me", userH.GetMe)
+
+	txH := handler.NewTransactionHandler(deps.TransactionUC, deps.NotificationUC)
 	api.GET("/transactions", txH.GetAll)
 	api.POST("/transactions", txH.Create)
 	api.GET("/transactions/monthly", txH.GetMonthlyExpenses)
 	api.GET("/transactions/monthly-income", txH.GetMonthlyIncome)
+	api.GET("/transactions/monthly-summary", txH.GetMonthlySummary)
+	api.GET("/transactions/export", txH.Export)
+	api.POST("/transactions/import", txH.Import)
 	api.PUT("/transactions/:id", txH.Update)
 	api.DELETE("/transactions/:id", txH.Delete)
 
@@ -57,13 +65,34 @@ func Setup(r *gin.Engine, deps Deps) {
 
 	cH := handler.NewChatHandler(deps.ChatUC)
 	api.POST("/chat", cH.Ask)
+	api.GET("/chat/history", cH.GetHistory)
+	api.DELETE("/chat/history", cH.ClearHistory)
 
 	mlH := handler.NewMLHandler(deps.MLUC)
 	api.GET("/ml/analysis", mlH.GetAnalysis)
 	api.GET("/ml/anomaly", mlH.GetAnomaly)
 	api.GET("/ml/forecast", mlH.GetForecast)
+	api.GET("/ml/insights", mlH.GetInsights)
 
 	fpH := handler.NewFinancialProfileHandler(deps.FinancialProfileUC)
 	api.POST("/financial-profile", fpH.Upsert)
 	api.GET("/financial-profile", fpH.Get)
+
+	nH := handler.NewNotificationHandler(deps.NotificationUC)
+	api.GET("/notifications", nH.GetAll)
+	api.PATCH("/notifications/read-all", nH.MarkAllRead)
+	api.PATCH("/notifications/:id/read", nH.MarkRead)
+	api.DELETE("/notifications/:id", nH.Delete)
+	api.GET("/notifications/preferences", nH.GetPreferences)
+	api.PUT("/notifications/preferences", nH.UpdatePreferences)
+
+	aH := handler.NewActivityLogHandler(deps.ActivityLogUC)
+	api.GET("/activity", aH.GetActivity)
+
+	rH := handler.NewReportsHandler(deps.ReportsUC)
+	api.GET("/reports/monthly-summary", rH.GetMonthlySummary)
+	api.GET("/reports/category-breakdown", rH.GetCategoryBreakdown)
+	api.GET("/reports/savings-rate", rH.GetSavingsRate)
+	api.GET("/reports/net-worth", rH.GetNetWorth)
+	api.GET("/reports/month-comparison", rH.GetMonthComparison)
 }

@@ -46,14 +46,10 @@ func corsMiddleware() gin.HandlerFunc {
 
 func main() {
 	if err := godotenv.Load(); err != nil {
-		fmt.Printf("Error loading .env file: %v\n", err)
+		log.Printf("warning: .env file not loaded: %v", err)
 	}
 
 	ctx := context.Background()
-
-	if err := godotenv.Load(); err != nil {
-		log.Printf("warning: .env file not loaded: %v", err)
-	}
 
 	gemini, err := usecase.NewGeminiClient(ctx)
 	if err != nil {
@@ -79,17 +75,22 @@ func main() {
 	goalRepo        := postgres.NewGoalRepository(db)
 	aiLogRepo       := postgres.NewAiLogRepository(db)
 	profileRepo     := postgres.NewFinancialProfileRepository(db)
+	notifRepo       := postgres.NewNotificationRepository(db)
+	activityRepo    := postgres.NewActivityLogRepository(db)
 
 	// use cases
-	userUC      := usecase.NewUserUseCase(userRepo)
-	txUC        := usecase.NewTransactionUseCase(txRepo)
-	budgetUC    := usecase.NewBudgetUseCase(budgetRepo)
-	goalUC      := usecase.NewGoalUseCase(goalRepo, txRepo)
-	dashboardUC := usecase.NewDashboardUseCase(txRepo, budgetRepo, goalRepo)
-	chatUC      := usecase.NewChatUseCase(txRepo, budgetRepo, goalRepo, aiLogRepo, profileRepo, gemini)
-	mlClient    := ml.NewClient()
-	mlUC        := usecase.NewMLUseCase(txRepo, mlClient)
-	profileUC   := usecase.NewFinancialProfileUseCase(profileRepo)
+	userUC         := usecase.NewUserUseCase(userRepo)
+	txUC           := usecase.NewTransactionUseCase(txRepo, activityRepo)
+	budgetUC       := usecase.NewBudgetUseCase(budgetRepo)
+	goalUC         := usecase.NewGoalUseCase(goalRepo, txRepo)
+	dashboardUC    := usecase.NewDashboardUseCase(txRepo, budgetRepo, goalRepo)
+	chatUC         := usecase.NewChatUseCase(txRepo, budgetRepo, goalRepo, aiLogRepo, profileRepo, gemini)
+	mlClient       := ml.NewClient()
+	mlUC           := usecase.NewMLUseCase(txRepo, mlClient)
+	profileUC      := usecase.NewFinancialProfileUseCase(profileRepo)
+	notifUC        := usecase.NewNotificationUseCase(notifRepo, budgetRepo)
+	activityLogUC  := usecase.NewActivityLogUseCase(activityRepo)
+	reportsUC      := usecase.NewReportsUseCase(txRepo, budgetRepo, goalRepo)
 
 	// delivery
 	r := gin.Default()
@@ -103,6 +104,9 @@ func main() {
 		ChatUC:             chatUC,
 		MLUC:               mlUC,
 		FinancialProfileUC: profileUC,
+		NotificationUC:     notifUC,
+		ActivityLogUC:      activityLogUC,
+		ReportsUC:          reportsUC,
 	})
 
 	fmt.Println("Server is running on port 8080")
