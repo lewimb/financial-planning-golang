@@ -39,13 +39,12 @@ flowchart TD
     G -- Yes --> J[bcrypt.CompareHashAndPassword\nstored hash vs plain password]
     J --> K{Match?}
     K -- No --> H
-    K -- Yes --> L[utils.GenerateJwt\nHS256 · claims: id·name·email\nsigned with SECRET_KEY]
-    L --> M[Set-Cookie: accessToken\nMaxAge=3600 · path=/]
-    M --> N[200 Login Successfully\nbody: token string]
+    K -- Yes --> L[utils.GenerateJwt\nHS256 · claims: id·name·email·exp\nsigned with SECRET_KEY]
+    L --> M[200 JSON body\naccessToken + user object]
 ```
 
-> **JWT structure:** Header `{alg:HS256}` + Claims `{id, name, email, iss:lewimb}` + HMAC-SHA256 signature.  
-> No `exp` claim is embedded — session length is enforced solely by the 1-hour cookie TTL.
+> **JWT structure:** Header `{alg:HS256}` + Claims `{id, name, email, iss:lewimb, exp:+1hr, iat:now}` + HMAC-SHA256 signature.
+> Token expires in 1 hour. Frontend must store the token and attach it as `Authorization: Bearer <token>` on every request.
 
 ---
 
@@ -55,12 +54,12 @@ flowchart TD
 flowchart TD
     A([Incoming /api/auth/v1/* request]) --> B[Read Authorization header]
     B --> C{Header present?}
-    C -- No --> D[400 Missing Authorization!]
+    C -- No --> D[401 Missing Authorization!]
     C -- Yes --> E[Split on space\n'Bearer TOKEN']
     E --> F{Exactly 2 parts?}
     F -- No --> G[401 format must be Bearer token]
     F -- Yes --> H[Extract token string]
-    H --> I[jwt.ParseWithClaims\nverify HS256 signature\nwith SECRET_KEY]
+    H --> I[jwt.ParseWithClaims\nverify HS256 signature\nwith SECRET_KEY\ncheck exp claim]
     I --> J{token.Valid == true?}
     J -- No --> K[401 Invalid token\nc.Abort]
     J -- Yes --> L[c.Set 'claims'\nMyCustomClaims stored in Gin context]

@@ -1,94 +1,95 @@
-# HttpOnly Cookie Migration — Frontend Guide
+# Auth Token Migration — Bearer Token Guide
 
-The login endpoint now sets an HttpOnly, `SameSite=None; Secure` (on HTTPS) cookie containing the JWT. This means **JavaScript cannot read the token from `document.cookie`** — and doesn't need to.
+The login endpoint now returns the JWT in the response body. Cookies are no longer used for authentication.
 
 ## What changed
 
 | Attribute | Before | After |
 |-----------|--------|-------|
-| `HttpOnly` | `false` | `true` |
-| `Secure` | `false` | auto: `true` on HTTPS, `false` on HTTP |
-| `SameSite` | (none) | `None` on HTTPS, `Lax` on HTTP |
-| `Domain` | `"*"` (invalid) | `""` (defaults to request origin) |
+| Token delivery | `Set-Cookie: accessToken` (HttpOnly) | JSON body `accessToken` field |
+| Auth method | Cookie sent automatically by browser | `Authorization: Bearer <token>` header |
+| `credentials: "include"` required | Yes | No |
+| `withCredentials: true` required | Yes | No |
+| Token readable by JS | No (HttpOnly) | Yes (response body) |
+
+## Login response
+
+```json
+{
+  "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "user": {
+    "id": 1,
+    "email": "user@example.com",
+    "name": "John Doe"
+  }
+}
+```
 
 ## What the frontend must do
 
-### 1. Remove `document.cookie` reads
-
-Delete any code reading the token from cookies:
+### 1. Store the token from the login response
 
 ```ts
-// ❌ REMOVE — HttpOnly makes this return empty
-const token = document.cookie
-  .split("; ")
-  .find((row) => row.startsWith("accessToken="))
-  ?.split("=")[1];
+const res = await fetch("/api/v1/login", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ email, password }),
+});
+const { accessToken, user } = await res.json();
+// store accessToken in memory (React state / Zustand / context)
+// do NOT store in localStorage — XSS can steal it
 ```
 
-### 2. Get the token from the login response body
-
-The login endpoint still returns the token in `data.token`. Store it in memory (React state / context / zustand) instead of cookies:
-
-```ts
-const res = await fetch("/api/v1/login", { method: "POST", body: ... });
-const json = await res.json();
-const token = json.data.token; // still available
-```
-
-### 3. Send the token as `Authorization: Bearer <token>`
-
-Attach it to every authenticated request (the auth middleware expects this header):
+### 2. Attach `Authorization: Bearer` on every authenticated request
 
 ```ts
 fetch("/api/auth/v1/transactions", {
-  headers: { Authorization: `Bearer ${token}` }
+  headers: { Authorization: `Bearer ${accessToken}` },
 });
 ```
 
-### 4. Add `credentials: "include"` to all fetch calls
-
-This tells the browser to include the HttpOnly cookie on cross-origin requests (needed when frontend and backend are on different ports/domains):
-
-```diff
- fetch(url, {
-+  credentials: "include",
-   headers: { Authorization: `Bearer ${token}` },
- });
-```
-
-For **axios**, set it globally:
+For axios — set globally on the instance:
 
 ```ts
-axios.defaults.withCredentials = true;
+const api = axios.create({ baseURL: "https://your-api.railway.app" });
+
+api.interceptors.request.use((config) => {
+  const token = getToken(); // from your auth store
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
 ```
 
-Or per-request:
-
-```diff
--axios.get("/api/auth/v1/transactions");
-+axios.get("/api/auth/v1/transactions", { withCredentials: true });
-```
-
-### 5. Store the token in memory, not in localStorage/sessionStorage
+### 3. Remove any cookie-based auth code
 
 ```ts
-// In auth context/state — NOT in document.cookie or localStorage
-let _token: string | null = null;
+// ❌ REMOVE — no longer works
+document.cookie.split("; ").find(row => row.startsWith("accessToken="));
 
-export function setToken(t: string) { _token = t; }
-export function getToken(): string | null { return _token; }
+// ❌ REMOVE — no longer needed
+credentials: "include"
+withCredentials: true
 ```
 
-On page reload the token is lost — the login page will redirect (the server can later implement a `/auth/refresh` endpoint using the HttpOnly cookie).
+### 4. Handle token expiry (1 hour)
 
-## Why this matters
+The JWT expires in 1 hour (`exp` claim). When a request returns 401, redirect to login:
 
-| Concern | Without HttpOnly | With HttpOnly |
-|---------|-----------------|---------------|
-| XSS stealing the JWT | `document.cookie` leaks it | Cookie is invisible to JS |
-| CSRF | Needs manual CSRF token | `SameSite=None; Secure` prevents cross-site form posts |
-| Token sent automatically | No — manual header | Browser sends it (once middleware is updated) |
+```ts
+api.interceptors.response.use(
+  (res) => res,
+  (err) => {
+    if (err.response?.status === 401) {
+      clearToken();
+      window.location.href = "/login";
+    }
+    return Promise.reject(err);
+  }
+);
+```
 
-## When will the cookie be used server-side?
+## Security notes
 
-Currently the auth middleware only reads the `Authorization` header. The cookie is set but **not yet consumed** by the backend. Once the middleware is updated to fall back to the cookie, the `Authorization` header can be removed — the browser will send the cookie automatically with `credentials: "include"`.
+- Store the token in memory (React context / Zustand) — NOT `localStorage` or `sessionStorage`
+- On page reload the token is lost — redirect to login (expected behavior without refresh tokens)
+- Token expiry is enforced server-side via the `exp` JWT claim (1 hour)
