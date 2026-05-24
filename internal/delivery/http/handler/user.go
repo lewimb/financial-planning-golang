@@ -2,7 +2,6 @@ package handler
 
 import (
 	"errors"
-	"net/http"
 
 	"github.com/financial-planning/internal/usecase"
 	"github.com/financial-planning/utils"
@@ -48,7 +47,7 @@ func (h *UserHandler) Login(c *gin.Context) {
 		return
 	}
 
-	token, err := h.uc.Login(req.Email, req.Password)
+	user, token, err := h.uc.Login(req.Email, req.Password)
 	if err != nil {
 		if errors.Is(err, usecase.ErrInvalidCredentials) {
 			c.JSON(400, gin.H{"error": err.Error()})
@@ -57,14 +56,14 @@ func (h *UserHandler) Login(c *gin.Context) {
 		c.JSON(500, gin.H{"error": "Login failed"})
 		return
 	}
-	secure := c.Request.TLS != nil || c.Request.Header.Get("X-Forwarded-Proto") == "https"
-	if secure {
-		c.SetSameSite(http.SameSiteNoneMode)
-	} else {
-		c.SetSameSite(http.SameSiteLaxMode)
-	}
-	c.SetCookie("accessToken", token, 3600, "/", "", secure, true)
-	c.JSON(200, gin.H{"message": "Login Successfully", "status": "200"})
+	c.JSON(200, gin.H{
+		"accessToken": token,
+		"user": gin.H{
+			"id":    user.ID,
+			"email": user.Email,
+			"name":  user.Name,
+		},
+	})
 }
 
 func (h *UserHandler) GetAll(c *gin.Context) {

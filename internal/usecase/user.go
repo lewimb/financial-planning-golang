@@ -2,7 +2,6 @@ package usecase
 
 import (
 	"errors"
-	"fmt"
 	"log"
 
 	"github.com/financial-planning/internal/domain"
@@ -53,16 +52,19 @@ func (uc *UserUseCase) Register(email, password, name string) error {
 	return nil
 }
 
-func (uc *UserUseCase) Login(email, password string) (string, error) {
+func (uc *UserUseCase) Login(email, password string) (*domain.User, string, error) {
 	user, err := uc.repo.FindByEmail(email)
 	if err != nil {
-		fmt.Printf("user: Login FindByEmail email=%s: %v", email, err)
 		log.Printf("user: Login FindByEmail email=%s: %v", email, err)
-		return "", ErrInvalidCredentials
+		return nil, "", ErrInvalidCredentials
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password)); err != nil {
-		fmt.Printf("user: Login bcrypt mismatch email=%s: %v\n", email, err)
-		return "", ErrInvalidCredentials
+		return nil, "", ErrInvalidCredentials
 	}
-	return utils.GenerateJwt(user.ID, user.Name, user.Email)
+	token, err := utils.GenerateJwt(user.ID, user.Name, user.Email)
+	if err != nil {
+		log.Printf("user: Login GenerateJwt email=%s: %v", email, err)
+		return nil, "", err
+	}
+	return user, token, nil
 }
