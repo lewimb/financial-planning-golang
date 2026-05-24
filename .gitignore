@@ -1,3 +1,6 @@
 .env
 *.exe
 tmp/
+erd.*
+ERD.md
+docs/erd.md
