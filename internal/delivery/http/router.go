@@ -19,17 +19,19 @@ type Deps struct {
 	NotificationUC     *usecase.NotificationUseCase
 	ActivityLogUC      *usecase.ActivityLogUseCase
 	ReportsUC          *usecase.ReportsUseCase
+	InsightsUC         *usecase.InsightsUseCase
 }
 
 func Setup(r *gin.Engine, deps Deps) {
 	userH := handler.NewUserHandler(deps.UserUC)
 	r.POST("/api/v1/register", userH.Register)
 	r.POST("/api/v1/login", userH.Login)
-	r.GET("/api/v1/users", userH.GetAll)
 
 	api := r.Group("/api/auth/v1", middleware.AuthRequired())
 
+	api.GET("/users", userH.GetAll)
 	api.GET("/users/me", userH.GetMe)
+	api.PATCH("/users/profile", userH.UpdateProfile)
 
 	txH := handler.NewTransactionHandler(deps.TransactionUC, deps.NotificationUC)
 	api.GET("/transactions", txH.GetAll)
@@ -65,6 +67,7 @@ func Setup(r *gin.Engine, deps Deps) {
 
 	cH := handler.NewChatHandler(deps.ChatUC)
 	api.POST("/chat", cH.Ask)
+	api.POST("/chat/stream", cH.AskStream)
 	api.GET("/chat/history", cH.GetHistory)
 	api.DELETE("/chat/history", cH.ClearHistory)
 
@@ -72,6 +75,8 @@ func Setup(r *gin.Engine, deps Deps) {
 	api.GET("/ml/analysis", mlH.GetAnalysis)
 	api.GET("/ml/anomaly", mlH.GetAnomaly)
 	api.GET("/ml/forecast", mlH.GetForecast)
+	api.POST("/ml/forecast/start", mlH.StartForecast)
+	api.GET("/ml/forecast/status/:job_id", mlH.GetForecastStatus)
 	api.GET("/ml/insights", mlH.GetInsights)
 
 	fpH := handler.NewFinancialProfileHandler(deps.FinancialProfileUC)
@@ -85,6 +90,9 @@ func Setup(r *gin.Engine, deps Deps) {
 	api.DELETE("/notifications/:id", nH.Delete)
 	api.GET("/notifications/preferences", nH.GetPreferences)
 	api.PUT("/notifications/preferences", nH.UpdatePreferences)
+	// Frontend-compatible alias
+	api.GET("/notification-settings", nH.GetPreferences)
+	api.POST("/notification-settings", nH.UpdatePreferences)
 
 	aH := handler.NewActivityLogHandler(deps.ActivityLogUC)
 	api.GET("/activity", aH.GetActivity)
@@ -95,4 +103,18 @@ func Setup(r *gin.Engine, deps Deps) {
 	api.GET("/reports/savings-rate", rH.GetSavingsRate)
 	api.GET("/reports/net-worth", rH.GetNetWorth)
 	api.GET("/reports/month-comparison", rH.GetMonthComparison)
+	// Year-based report endpoints (frontend chart format)
+	api.GET("/reports/income-expense-trend", rH.GetIncomeExpenseTrend)
+	api.GET("/reports/networth-history", rH.GetNetworthHistory)
+	api.GET("/reports/savings-rate-history", rH.GetSavingsRateHistory)
+	api.GET("/reports/month-comparison-v2", rH.GetMonthComparisonByDate)
+	api.GET("/transactions/category-breakdown", rH.GetCategoryBreakdownDetailed)
+
+	iH := handler.NewInsightsHandler(deps.InsightsUC)
+	api.GET("/financial-health", iH.GetFinancialHealth)
+	api.GET("/insights", iH.GetInsights)
+	api.GET("/recommendations", iH.GetRecommendations)
+
+	aiCoachH := handler.NewAICoachHandler(deps.InsightsUC, deps.FinancialProfileUC)
+	api.GET("/ai-coach/context", aiCoachH.GetContext)
 }
