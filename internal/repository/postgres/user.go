@@ -47,9 +47,12 @@ func (r *userRepository) FindByEmail(email string) (*domain.User, error) {
 
 func (r *userRepository) GetByID(id int) (*domain.UserResponse, error) {
 	var u domain.UserResponse
-	err := r.db.QueryRow(
-		"SELECT id, email, name, created_at, deleted_at, password FROM users WHERE id = $1 AND deleted_at IS NULL", id,
-	).Scan(&u.ID, &u.Email, &u.Name, &u.CreatedAt, &u.DeletedAt, &u.Password)
+	err := r.db.QueryRow(`
+		SELECT id, email, name, created_at, deleted_at, password,
+		       first_name, last_name, phone
+		FROM users WHERE id = $1 AND deleted_at IS NULL`, id,
+	).Scan(&u.ID, &u.Email, &u.Name, &u.CreatedAt, &u.DeletedAt, &u.Password,
+		&u.FirstName, &u.LastName, &u.Phone)
 	if err != nil {
 		return nil, err
 	}
@@ -69,4 +72,24 @@ func (r *userRepository) Create(email, hashedPassword, name string) error {
 		return err
 	}
 	return nil
+}
+
+func (r *userRepository) UpdateProfile(userID int, req domain.UpdateProfileRequest) (*domain.UserProfileResponse, error) {
+	var p domain.UserProfileResponse
+	err := r.db.QueryRow(`
+		UPDATE users
+		SET first_name = COALESCE($1, first_name),
+		    last_name  = COALESCE($2, last_name),
+		    phone      = COALESCE($3, phone)
+		WHERE id = $4 AND deleted_at IS NULL
+		RETURNING id, email, name, first_name, last_name, phone`,
+		req.FirstName, req.LastName, req.Phone, userID,
+	).Scan(&p.ID, &p.Email, &p.Name, &p.FirstName, &p.LastName, &p.Phone)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, domain.ErrNotFound
+		}
+		return nil, err
+	}
+	return &p, nil
 }

@@ -3,6 +3,7 @@ package handler
 import (
 	"errors"
 
+	"github.com/financial-planning/internal/domain"
 	"github.com/financial-planning/internal/usecase"
 	"github.com/financial-planning/utils"
 	"github.com/gin-gonic/gin"
@@ -87,7 +88,29 @@ func (h *UserHandler) GetMe(c *gin.Context) {
 			"id":         user.ID,
 			"email":      user.Email,
 			"name":       user.Name,
+			"first_name": user.FirstName,
+			"last_name":  user.LastName,
+			"phone":      user.Phone,
 			"created_at": user.CreatedAt,
 		},
 	})
+}
+
+func (h *UserHandler) UpdateProfile(c *gin.Context) {
+	userID := utils.ClaimId(c)
+	var req domain.UpdateProfileRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(400, gin.H{"error": "invalid request body"})
+		return
+	}
+	profile, err := h.uc.UpdateProfile(userID, req)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			c.JSON(404, gin.H{"error": "user not found"})
+			return
+		}
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(200, gin.H{"user": profile})
 }

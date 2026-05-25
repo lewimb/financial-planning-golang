@@ -68,3 +68,11 @@ func (uc *UserUseCase) Login(email, password string) (*domain.User, string, erro
 	}
 	return user, token, nil
 }
+
+func (uc *UserUseCase) UpdateProfile(userID int, req domain.UpdateProfileRequest) (*domain.UserProfileResponse, error) {
+	profile, err := uc.repo.UpdateProfile(userID, req)
+	if err != nil {
+		log.Printf("user: UpdateProfile userID=%d: %v", userID, err)
+	}
+	return profile, err
+}
