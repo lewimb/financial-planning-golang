@@ -4,3 +4,4 @@ tmp/
 erd.*
 ERD.md
 docs/erd.md
+.claude/settings.local.json
