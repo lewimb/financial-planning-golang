@@ -70,6 +70,22 @@ func (g *GeminiClient) Call(ctx context.Context, prompt string) (string, error) 
 	return "", fmt.Errorf("%w: max retries exceeded", ErrChatUnavailable)
 }
 
+// StreamCall calls Gemini with streaming and invokes onChunk for each text chunk received.
+func (g *GeminiClient) StreamCall(ctx context.Context, prompt string, onChunk func(string)) error {
+	for chunk, err := range g.client.Models.GenerateContentStream(ctx, g.model, genai.Text(prompt), nil) {
+		if err != nil {
+			if isRateLimitErr(err) {
+				return fmt.Errorf("%w: rate limit exceeded", ErrChatUnavailable)
+			}
+			return fmt.Errorf("%w: %v", ErrChatUnavailable, err)
+		}
+		if text := chunk.Text(); text != "" {
+			onChunk(text)
+		}
+	}
+	return nil
+}
+
 func isRateLimitErr(err error) bool {
 	if err == nil {
 		return false
@@ -179,4 +195,56 @@ User question: %s`,
 	}
 
 	return reply, nil
+}
+
+// AskStream builds the same prompt as Ask but streams chunks via onChunk.
+// The full reply is not persisted to ai_logs (streaming responses are ephemeral).
+func (uc *ChatUseCase) AskStream(ctx context.Context, userID int, message string, onChunk func(string)) error {
+	now := time.Now()
+
+	income, _ := uc.txRepo.GetMonthlyIncome(userID)
+	expense, _ := uc.txRepo.GetMonthlyExpenses(userID)
+	netSavings, _ := uc.txRepo.GetNetSavings(userID)
+	budgetUsage, _ := uc.budgetRepo.GetUsage(userID, int(now.Month()), now.Year())
+
+	exceeded := 0
+	for _, b := range budgetUsage {
+		if b.Status == "EXCEEDED" {
+			exceeded++
+		}
+	}
+
+	activeGoals, _ := uc.goalRepo.GetAll(userID, true)
+
+	profileSection := ""
+	if profile, err := uc.profileRepo.GetByUserID(userID); err == nil {
+		profile.NetAvailable = profile.MonthlyIncome - profile.FixedExpenses - profile.Debt
+		profileSection = "\n" + BuildFinancialProfileContext(profile)
+	}
+
+	prompt := fmt.Sprintf(`You are a helpful financial assistant. Answer the user's question based on their financial data below.
+Respond in the same language the user writes in (Indonesian or English).
+Be concise and actionable.
+%s
+Transaction Data (current month: %s %d):
+- Monthly income: %.0f
+- Monthly expense: %.0f
+- Net savings (all-time): %.0f
+- Budgets: %d total, %d exceeded budget limit
+- Active financial goals: %d
+
+User question: %s`,
+		profileSection,
+		now.Month().String(), now.Year(),
+		income, expense, netSavings,
+		len(budgetUsage), exceeded,
+		len(activeGoals),
+		message,
+	)
+
+	if err := uc.gemini.StreamCall(ctx, prompt, onChunk); err != nil {
+		log.Printf("gemini: stream failed for user %d: %v", userID, err)
+		return err
+	}
+	return nil
 }
