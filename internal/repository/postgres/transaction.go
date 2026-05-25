@@ -3,7 +3,9 @@ package postgres
 import (
 	"database/sql"
 	"fmt"
+	"math"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/financial-planning/internal/domain"
@@ -186,6 +188,111 @@ func (r *transactionRepository) GetMonthlySummary(userID int, months int) ([]dom
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+func (r *transactionRepository) GetYearlySummary(userID, year int) ([]domain.MonthlySummaryItem, error) {
+	rows, err := r.db.Query(`
+		WITH months AS (
+			SELECT generate_series(1, 12) AS month
+		)
+		SELECT
+			m.month,
+			COALESCE(SUM(CASE WHEN t.type = 'INCOME'  THEN t.amount ELSE 0 END), 0) AS income,
+			COALESCE(SUM(CASE WHEN t.type = 'EXPENSE' THEN t.amount ELSE 0 END), 0) AS expense
+		FROM months m
+		LEFT JOIN transactions t
+			ON EXTRACT(MONTH FROM t.date) = m.month
+			AND EXTRACT(YEAR FROM t.date) = $2
+			AND t.user_id = $1
+			AND t.deleted_at IS NULL
+		GROUP BY m.month
+		ORDER BY m.month
+	`, userID, year)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []domain.MonthlySummaryItem
+	for rows.Next() {
+		var item domain.MonthlySummaryItem
+		if err := rows.Scan(&item.Month, &item.Income, &item.Expense); err != nil {
+			return nil, err
+		}
+		item.Year = year
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (r *transactionRepository) GetCategoryBreakdownDetailed(userID, month, year int) ([]domain.CategoryBreakdownItem, error) {
+	rows, err := r.db.Query(`
+		SELECT
+			category,
+			SUM(amount)::float8 AS total,
+			COUNT(*)::int AS transaction_count
+		FROM transactions
+		WHERE user_id = $1
+		  AND type = 'EXPENSE'
+		  AND EXTRACT(MONTH FROM date) = $2
+		  AND EXTRACT(YEAR FROM date) = $3
+		  AND deleted_at IS NULL
+		GROUP BY category
+		ORDER BY total DESC
+	`, userID, month, year)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []domain.CategoryBreakdownItem
+	var grandTotal float64
+	for rows.Next() {
+		var item domain.CategoryBreakdownItem
+		if err := rows.Scan(&item.Category, &item.Total, &item.TransactionCount); err != nil {
+			return nil, err
+		}
+		grandTotal += item.Total
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	if grandTotal > 0 {
+		for i := range items {
+			items[i].Percentage = math.Round(items[i].Total/grandTotal*1000) / 10
+			items[i].Label = categoryLabel(items[i].Category)
+		}
+	}
+	return items, nil
+}
+
+func categoryLabel(cat string) string {
+	labels := map[string]string{
+		"FOOD":          "Food & Dining",
+		"TRANSPORT":     "Transportation",
+		"ENTERTAINMENT": "Entertainment",
+		"UTILITIES":     "Utilities",
+		"SHOPPING":      "Shopping",
+		"HEALTH":        "Healthcare",
+		"EDUCATION":     "Education",
+		"HOUSING":       "Housing",
+		"SAVINGS":       "Savings",
+		"INCOME":        "Income",
+		"INVESTMENT":    "Investment",
+		"TRAVEL":        "Travel",
+	}
+	if l, ok := labels[strings.ToUpper(cat)]; ok {
+		return l
+	}
+	words := strings.Fields(strings.ToLower(cat))
+	for i, w := range words {
+		if len(w) > 0 {
+			words[i] = strings.ToUpper(w[:1]) + w[1:]
+		}
+	}
+	return strings.Join(words, " ")
 }
 
 func (r *transactionRepository) BulkCreate(userID int, reqs []domain.TransactionRequest) error {
