@@ -18,6 +18,8 @@ type NotificationPreferences struct {
 	BudgetAlerts  bool `json:"budget_alerts"`
 	GoalReminders bool `json:"goal_reminders"`
 	AnomalyAlerts bool `json:"anomaly_alerts"`
+	WeeklySummary bool `json:"weekly_summary"`
+	PushEnabled   bool `json:"push_enabled"`
 }
 
 type NotificationRepository interface {

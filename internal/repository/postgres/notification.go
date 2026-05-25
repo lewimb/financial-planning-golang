@@ -101,11 +101,11 @@ func (r *notificationRepository) GetUnreadCount(userID int) (int, error) {
 func (r *notificationRepository) GetPreferences(userID int) (*domain.NotificationPreferences, error) {
 	var p domain.NotificationPreferences
 	err := r.db.QueryRow(`
-		SELECT budget_alerts, goal_reminders, anomaly_alerts
+		SELECT budget_alerts, goal_reminders, anomaly_alerts, weekly_summary, push_enabled
 		FROM notification_preferences
 		WHERE user_id = $1`,
 		userID,
-	).Scan(&p.BudgetAlerts, &p.GoalReminders, &p.AnomalyAlerts)
+	).Scan(&p.BudgetAlerts, &p.GoalReminders, &p.AnomalyAlerts, &p.WeeklySummary, &p.PushEnabled)
 	if err == sql.ErrNoRows {
 		return &domain.NotificationPreferences{BudgetAlerts: true, GoalReminders: true, AnomalyAlerts: true}, nil
 	}
@@ -117,14 +117,17 @@ func (r *notificationRepository) GetPreferences(userID int) (*domain.Notificatio
 
 func (r *notificationRepository) UpsertPreferences(userID int, prefs domain.NotificationPreferences) error {
 	_, err := r.db.Exec(`
-		INSERT INTO notification_preferences (user_id, budget_alerts, goal_reminders, anomaly_alerts, updated_at)
-		VALUES ($1, $2, $3, $4, $5)
+		INSERT INTO notification_preferences (user_id, budget_alerts, goal_reminders, anomaly_alerts, weekly_summary, push_enabled, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		ON CONFLICT (user_id) DO UPDATE SET
 			budget_alerts  = EXCLUDED.budget_alerts,
 			goal_reminders = EXCLUDED.goal_reminders,
 			anomaly_alerts = EXCLUDED.anomaly_alerts,
+			weekly_summary = EXCLUDED.weekly_summary,
+			push_enabled   = EXCLUDED.push_enabled,
 			updated_at     = EXCLUDED.updated_at`,
-		userID, prefs.BudgetAlerts, prefs.GoalReminders, prefs.AnomalyAlerts, time.Now(),
+		userID, prefs.BudgetAlerts, prefs.GoalReminders, prefs.AnomalyAlerts,
+		prefs.WeeklySummary, prefs.PushEnabled, time.Now(),
 	)
 	return err
 }
