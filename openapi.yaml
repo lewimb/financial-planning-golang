@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Financial Planning API
-  version: 1.3.0
+  version: 1.4.0
   description: >
     REST API for the Financial Planning backend (Go/Gin).
     All `/api/auth/v1/…` routes require a valid JWT supplied either as an
@@ -99,6 +99,15 @@ components:
           type: string
         name:
           type: string
+        first_name:
+          type: string
+          nullable: true
+        last_name:
+          type: string
+          nullable: true
+        phone:
+          type: string
+          nullable: true
         created_at:
           type: string
           format: date-time
@@ -795,6 +804,369 @@ components:
           transport: 33.4
           utilities: 26.6
         spike_category: null
+
+    # ── User Profile ─────────────────────────────────────────────────────────
+    UpdateProfileRequest:
+      type: object
+      description: All fields optional. Only supplied fields are updated.
+      properties:
+        first_name:
+          type: string
+          nullable: true
+          maxLength: 100
+        last_name:
+          type: string
+          nullable: true
+          maxLength: 100
+        phone:
+          type: string
+          nullable: true
+          maxLength: 20
+          description: E.g. "+6281234567890"
+      example:
+        first_name: "Lewi"
+        last_name: "Borosi"
+        phone: "+6281234567890"
+
+    UserProfileResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+        email:
+          type: string
+        name:
+          type: string
+        first_name:
+          type: string
+          nullable: true
+        last_name:
+          type: string
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+      example:
+        id: 1
+        email: "user@example.com"
+        name: "Lewi Borosi"
+        first_name: "Lewi"
+        last_name: "Borosi"
+        phone: "+6281234567890"
+
+    # ── Financial Health ──────────────────────────────────────────────────────
+    FinancialHealthComponents:
+      type: object
+      properties:
+        savings_rate:
+          type: number
+          format: float
+          description: Current month (income − expense) / income. 0 if no income.
+        budget_adherence:
+          type: number
+          format: float
+          description: Fraction of budgets not EXCEEDED (0–1).
+        goal_progress:
+          type: number
+          format: float
+          description: Average (current_amount / target_amount) across all goals (0–1).
+
+    FinancialHealthResponse:
+      type: object
+      properties:
+        score:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: >
+            Composite score. Formula:
+            savings_score = min(savings_rate / 0.20 * 40, 40);
+            budget_score = budget_adherence * 30;
+            goal_score = goal_progress * 30.
+        rating:
+          type: string
+          enum: [Poor, Fair, Good, Excellent]
+          description: "0–40 → Poor, 41–60 → Fair, 61–80 → Good, 81–100 → Excellent"
+        components:
+          $ref: '#/components/schemas/FinancialHealthComponents'
+        trend:
+          type: string
+          enum: [improving, stable, declining]
+          description: Always "stable" in MVP (no historical cache yet).
+        last_calculated:
+          type: string
+          format: date-time
+          description: UTC date truncated to day boundary.
+      example:
+        score: 72
+        rating: "Good"
+        components:
+          savings_rate: 0.21
+          budget_adherence: 0.85
+          goal_progress: 0.45
+        trend: "stable"
+        last_calculated: "2026-05-25T00:00:00Z"
+
+    # ── Insights ──────────────────────────────────────────────────────────────
+    InsightItem:
+      type: object
+      properties:
+        type:
+          type: string
+          description: >
+            Machine-readable type.
+            Values: goal_progress, budget_exceeded, budget_warning,
+            income_increase, income_decrease, no_data.
+        title:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+          enum: [success, warning, info]
+
+    InsightsResponse:
+      type: object
+      properties:
+        insights:
+          type: array
+          items:
+            $ref: '#/components/schemas/InsightItem'
+        period:
+          type: object
+          properties:
+            month: { type: integer }
+            year: { type: integer }
+        generated_at:
+          type: string
+          format: date-time
+      example:
+        insights:
+          - type: "goal_progress"
+            title: "3 of 4 goals on track"
+            description: "Goals with at least 50% progress toward target amount."
+            status: "success"
+          - type: "budget_exceeded"
+            title: "FOOD budget exceeded"
+            description: "You spent 23% over your FOOD budget this month."
+            status: "warning"
+        period: { month: 5, year: 2026 }
+        generated_at: "2026-05-25T10:00:00Z"
+
+    # ── Recommendations ───────────────────────────────────────────────────────
+    RecommendationItem:
+      type: object
+      properties:
+        priority:
+          type: string
+          enum: [high, medium, low]
+        category:
+          type: string
+          description: "E.g. savings, budget, goals, general"
+        title:
+          type: string
+        action:
+          type: string
+          description: Specific, actionable instruction with real numbers.
+        potential_impact:
+          type: string
+          description: Estimated financial benefit. Empty string when not calculable.
+
+    RecommendationsResponse:
+      type: object
+      properties:
+        recommendations:
+          type: array
+          items:
+            $ref: '#/components/schemas/RecommendationItem'
+        generated_at:
+          type: string
+          format: date-time
+      example:
+        recommendations:
+          - priority: "high"
+            category: "savings"
+            title: "Increase savings rate"
+            action: "Your current savings rate is 8%. Increasing to 20% would save an additional Rp 600.000/month."
+            potential_impact: "Rp 600.000/month"
+        generated_at: "2026-05-25T10:00:00Z"
+
+    # ── Year-based Report Types ───────────────────────────────────────────────
+    IncomeExpenseTrendPoint:
+      type: object
+      properties:
+        month: { type: integer, minimum: 1, maximum: 12 }
+        month_name: { type: string, description: "E.g. January" }
+        income: { type: number, format: float }
+        expense: { type: number, format: float }
+        savings: { type: number, format: float, description: income − expense }
+
+    IncomeExpenseTrendResponse:
+      type: object
+      properties:
+        year: { type: integer }
+        data:
+          type: array
+          minItems: 12
+          maxItems: 12
+          items:
+            $ref: '#/components/schemas/IncomeExpenseTrendPoint'
+          description: Always 12 entries (one per month). Months with no data have 0 values.
+      example:
+        year: 2026
+        data:
+          - month: 1
+            month_name: "January"
+            income: 5000000
+            expense: 3200000
+            savings: 1800000
+          - month: 2
+            month_name: "February"
+            income: 0
+            expense: 0
+            savings: 0
+
+    NetWorthHistoryPoint:
+      type: object
+      properties:
+        month: { type: integer }
+        month_name: { type: string }
+        net_worth: { type: number, format: float, description: Cumulative income − expense up to this month }
+
+    NetWorthHistoryResponse:
+      type: object
+      properties:
+        year: { type: integer }
+        data:
+          type: array
+          minItems: 12
+          maxItems: 12
+          items:
+            $ref: '#/components/schemas/NetWorthHistoryPoint'
+      example:
+        year: 2026
+        data:
+          - { month: 1, month_name: "January", net_worth: 1800000 }
+          - { month: 2, month_name: "February", net_worth: 4100000 }
+
+    SavingsRateHistoryPoint:
+      type: object
+      properties:
+        month: { type: integer }
+        month_name: { type: string }
+        income: { type: number, format: float }
+        expense: { type: number, format: float }
+        rate: { type: number, format: float, description: "(income − expense) / income * 100. 0 when income is 0." }
+
+    SavingsRateHistoryResponse:
+      type: object
+      properties:
+        year: { type: integer }
+        data:
+          type: array
+          minItems: 12
+          maxItems: 12
+          items:
+            $ref: '#/components/schemas/SavingsRateHistoryPoint'
+      example:
+        year: 2026
+        data:
+          - { month: 1, month_name: "January", income: 5000000, expense: 3200000, rate: 36.0 }
+
+    MonthComparisonPeriod:
+      type: object
+      properties:
+        month: { type: integer }
+        year: { type: integer }
+        income: { type: number, format: float }
+        expense: { type: number, format: float }
+        savings: { type: number, format: float }
+
+    MonthComparisonV2Response:
+      type: object
+      properties:
+        current:
+          $ref: '#/components/schemas/MonthComparisonPeriod'
+        previous:
+          $ref: '#/components/schemas/MonthComparisonPeriod'
+        changes:
+          type: object
+          properties:
+            income_pct: { type: number, format: float, description: "% change vs previous month. 0 if previous income = 0." }
+            expense_pct: { type: number, format: float }
+            savings_pct: { type: number, format: float }
+      example:
+        current: { month: 5, year: 2026, income: 5420000, expense: 3240000, savings: 2180000 }
+        previous: { month: 4, year: 2026, income: 5300000, expense: 3500000, savings: 1800000 }
+        changes: { income_pct: 2.3, expense_pct: -7.4, savings_pct: 21.1 }
+
+    CategoryBreakdownItem:
+      type: object
+      properties:
+        category: { type: string, description: "Raw category value from transaction (e.g. FOOD)" }
+        label: { type: string, description: "Human-readable label (e.g. Food & Dining)" }
+        total: { type: number, format: float }
+        percentage: { type: number, format: float, description: "Rounded to 1 decimal. Values across items sum to ~100." }
+        transaction_count: { type: integer }
+
+    CategoryBreakdownResponse:
+      type: object
+      properties:
+        period:
+          type: object
+          properties:
+            month: { type: integer }
+            year: { type: integer }
+        total_expense:
+          type: number
+          format: float
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/CategoryBreakdownItem'
+          description: Sorted by total descending.
+      example:
+        period: { month: 5, year: 2026 }
+        total_expense: 3240000
+        data:
+          - category: "FOOD"
+            label: "Food & Dining"
+            total: 1200000
+            percentage: 37.0
+            transaction_count: 15
+          - category: "TRANSPORT"
+            label: "Transportation"
+            total: 450000
+            percentage: 13.9
+            transaction_count: 8
+
+    # ── Notification Preferences (extended) ───────────────────────────────────
+    NotificationPreferencesBody:
+      type: object
+      properties:
+        budget_alerts:
+          type: boolean
+          default: true
+        goal_reminders:
+          type: boolean
+          default: true
+        anomaly_alerts:
+          type: boolean
+          default: true
+        weekly_summary:
+          type: boolean
+          default: false
+          description: Receive a weekly financial summary (future cron job)
+        push_enabled:
+          type: boolean
+          default: false
+          description: Enable push notifications (future FCM integration)
+      example:
+        budget_alerts: true
+        goal_reminders: true
+        anomaly_alerts: true
+        weekly_summary: false
+        push_enabled: false
 
 paths:
   # ── Auth ────────────────────────────────────────────────────────────────────
@@ -2006,30 +2378,75 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
-  # NEW ENDPOINTS (v1.3) ---------------------------------------------------
-
   /api/auth/v1/users/me:
     get:
       tags: [Auth]
-      summary: Get current user profile
+      summary: Get current authenticated user
       security:
         - cookieAuth: []
         - bearerAuth: []
       responses:
         '200':
-          description: Current user
+          description: Current user with profile fields
           content:
             application/json:
               schema:
                 type: object
                 properties:
                   data:
-                    type: object
-                    properties:
-                      id: { type: integer }
-                      email: { type: string }
-                      name: { type: string }
-                      created_at: { type: string, format: date-time }
+                    $ref: '#/components/schemas/UserResponse'
+        '401':
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/auth/v1/users/profile:
+    patch:
+      tags: [Auth]
+      summary: Update user profile (name / phone)
+      description: >
+        Updates first_name, last_name, and/or phone for the authenticated user.
+        All fields are optional — only supplied non-null fields are written.
+        Email is NOT updatable via this endpoint.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProfileRequest'
+      responses:
+        '200':
+          description: Updated profile
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/UserProfileResponse'
+        '400':
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /api/auth/v1/transactions/monthly-summary:
     get:
@@ -2244,18 +2661,14 @@ paths:
         - bearerAuth: []
       responses:
         '200':
-          description: Preferences
+          description: Preferences (returns defaults if not yet configured)
           content:
             application/json:
               schema:
                 type: object
                 properties:
                   data:
-                    type: object
-                    properties:
-                      budget_alerts: { type: boolean }
-                      goal_reminders: { type: boolean }
-                      anomaly_alerts: { type: boolean }
+                    $ref: '#/components/schemas/NotificationPreferencesBody'
     put:
       tags: [Notifications]
       summary: Update notification preferences
@@ -2267,14 +2680,48 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                budget_alerts: { type: boolean }
-                goal_reminders: { type: boolean }
-                anomaly_alerts: { type: boolean }
+              $ref: '#/components/schemas/NotificationPreferencesBody'
       responses:
         '200':
           description: Updated
+          content:
+            application/json:
+              schema: { '$ref': '#/components/schemas/MessageResponse' }
+
+  /api/auth/v1/notification-settings:
+    get:
+      tags: [Notifications]
+      summary: Get notification settings (alias for /notifications/preferences)
+      description: Frontend-compatible alias. Identical response to GET /notifications/preferences.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Notification settings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/NotificationPreferencesBody'
+    post:
+      tags: [Notifications]
+      summary: Save notification settings (alias for PUT /notifications/preferences)
+      description: Frontend-compatible alias using POST instead of PUT.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationPreferencesBody'
+      responses:
+        '200':
+          description: Saved
           content:
             application/json:
               schema: { '$ref': '#/components/schemas/MessageResponse' }
@@ -2448,3 +2895,271 @@ paths:
                       income_change_pct: { type: number, format: float }
                       expense_change_pct: { type: number, format: float }
 
+  /api/auth/v1/reports/income-expense-trend:
+    get:
+      tags: [Reports]
+      summary: "12-month income / expense / savings trend for a given year"
+      description: >
+        Returns one entry per calendar month (January–December) regardless of
+        whether the user has transactions. Months with no data have 0 values.
+        Defaults to the current year when `year` is omitted.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: year
+          in: query
+          schema:
+            type: integer
+            example: 2026
+          description: 4-digit year. Defaults to current year.
+      responses:
+        '200':
+          description: 12-month income/expense/savings array
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IncomeExpenseTrendResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema: { '$ref': '#/components/schemas/Error' }
+
+  /api/auth/v1/reports/networth-history:
+    get:
+      tags: [Reports]
+      summary: "12-month cumulative net worth history for a given year"
+      description: >
+        Calculates cumulative (income − expense) summed month by month for the
+        requested year. Starts from 0 at January — does NOT include history
+        from prior years. Months with no transactions contribute 0.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: year
+          in: query
+          schema:
+            type: integer
+            example: 2026
+          description: 4-digit year. Defaults to current year.
+      responses:
+        '200':
+          description: 12-month cumulative net worth array
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NetWorthHistoryResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema: { '$ref': '#/components/schemas/Error' }
+
+  /api/auth/v1/reports/savings-rate-history:
+    get:
+      tags: [Reports]
+      summary: "12-month savings rate % history for a given year"
+      description: >
+        Returns (income − expense) / income * 100 per month.
+        Rate is 0 when income is 0 for that month.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: year
+          in: query
+          schema:
+            type: integer
+            example: 2026
+          description: 4-digit year. Defaults to current year.
+      responses:
+        '200':
+          description: 12-month savings rate array
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SavingsRateHistoryResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema: { '$ref': '#/components/schemas/Error' }
+
+  /api/auth/v1/reports/month-comparison-v2:
+    get:
+      tags: [Reports]
+      summary: "Month-over-month comparison with savings delta (frontend format)"
+      description: >
+        Compares the requested month against the prior month. Unlike
+        `/reports/month-comparison`, this endpoint accepts explicit `month` and
+        `year` parameters and includes a `savings` field and `savings_pct` in
+        `changes`. Defaults to current month/year.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: month
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 12
+          description: Month number (1–12). Defaults to current month.
+        - name: year
+          in: query
+          schema:
+            type: integer
+            example: 2026
+          description: 4-digit year. Defaults to current year.
+      responses:
+        '200':
+          description: Month-over-month comparison
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MonthComparisonV2Response'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema: { '$ref': '#/components/schemas/Error' }
+
+  /api/auth/v1/transactions/category-breakdown:
+    get:
+      tags: [Transactions]
+      summary: "Expense breakdown by category with totals and labels (pie chart)"
+      description: >
+        Returns per-category expense aggregation for the given month/year.
+        Includes human-readable `label`, absolute `total`, `percentage`, and
+        `transaction_count`. Sorted by total descending.
+        Use this instead of `/reports/category-breakdown` for chart components.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: month
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 12
+          description: Month number. Defaults to current month.
+        - name: year
+          in: query
+          schema:
+            type: integer
+            example: 2026
+          description: 4-digit year. Defaults to current year.
+      responses:
+        '200':
+          description: Category breakdown with totals
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CategoryBreakdownResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema: { '$ref': '#/components/schemas/Error' }
+
+  # ── AI Coach / Insights ───────────────────────────────────────────────────
+
+  /api/auth/v1/financial-health:
+    get:
+      tags: [AI Coach]
+      summary: Calculate personalized financial health score
+      description: >
+        Returns a rule-based financial health score (0–100) derived from the
+        authenticated user's current month transactions, budget usage, and goal
+        progress. Responds 200 even when the user has no data (defaults to
+        neutral/full scores).
+
+        **Scoring formula:**
+        - savings_score = min(savings_rate / 0.20 * 40, 40) — full 40 pts at 20% savings rate
+        - budget_score = budget_adherence * 30
+        - goal_score = goal_progress * 30
+        - total = round(sum)
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Financial health score and breakdown
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FinancialHealthResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema: { '$ref': '#/components/schemas/Error' }
+
+  /api/auth/v1/insights:
+    get:
+      tags: [AI Coach]
+      summary: Personalized financial insights (rule-based)
+      description: >
+        Generates up to 5 insights from the user's goals, budget usage, and
+        recent transaction trends. Returns a `no_data` insight when there is
+        insufficient data.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: month
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 12
+          description: Month to evaluate. Defaults to current month.
+        - name: year
+          in: query
+          schema:
+            type: integer
+            example: 2026
+          description: Year to evaluate. Defaults to current year.
+      responses:
+        '200':
+          description: List of personalized insights
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InsightsResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema: { '$ref': '#/components/schemas/Error' }
+
+  /api/auth/v1/recommendations:
+    get:
+      tags: [AI Coach]
+      summary: Personalized financial recommendations (rule-based)
+      description: >
+        Returns up to 4 ranked recommendations derived from the user's savings
+        rate, budget usage, and upcoming goal deadlines. Rules:
+
+        1. savings_rate < 10% → recommend increasing to 20%
+        2. Any budget ≥ 90% used → recommend reviewing that category
+        3. Goal deadline < 60 days + progress < 80% → recommend boosting contributions
+        4. No matches → returns a "keep up the good work" placeholder
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of recommendations sorted by priority
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecommendationsResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema: { '$ref': '#/components/schemas/Error' }
