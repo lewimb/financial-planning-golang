@@ -43,9 +43,28 @@ type ForecastResponse struct {
 	DailyForecast            []ForecastRecord `json:"daily_forecast"`
 }
 
+// InsightItem is a single insight from the ML service.
+type InsightItem struct {
+	Type        string `json:"type"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Status      string `json:"status"` // "success" | "warning" | "info"
+}
+
 // InsightsResponse mirrors POST /insights on the ML service.
 type InsightsResponse struct {
-	TopCategory       *string            `json:"top_category"`
-	CategoryBreakdown map[string]float64 `json:"category_breakdown"` // % per category, sums to ~100
-	SpikeCategory     *string            `json:"spike_category"`     // null if no spike detected
+	Insights []InsightItem `json:"insights"`
+}
+
+// ForecastJobResponse mirrors POST /forecast/start on the ML service.
+type ForecastJobResponse struct {
+	JobID string `json:"job_id"`
+}
+
+// ForecastStatusResponse mirrors GET /forecast/status/{job_id} on the ML service.
+type ForecastStatusResponse struct {
+	JobID  string           `json:"job_id"`
+	Status string           `json:"status"` // "pending" | "running" | "complete" | "failed"
+	Result *ForecastResponse `json:"result"`
+	Error  *string          `json:"error"`
 }

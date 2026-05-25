@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"time"
@@ -12,10 +13,12 @@ import (
 
 // Timeouts per ML service recommendation (see ML_SERVICE_INTEGRATION.md).
 const (
-	analysisTimeout = 5 * time.Second
-	anomalyTimeout  = 10 * time.Second
-	forecastTimeout = 60 * time.Second
-	insightsTimeout = 10 * time.Second
+	analysisTimeout       = 5 * time.Second
+	anomalyTimeout        = 10 * time.Second
+	forecastTimeout       = 60 * time.Second
+	insightsTimeout       = 10 * time.Second
+	forecastStartTimeout  = 5 * time.Second
+	forecastStatusTimeout = 5 * time.Second
 )
 
 // Client is an HTTP client for the ML service.
@@ -30,6 +33,7 @@ func NewClient() *Client {
 	base := os.Getenv("ML_SERVICE_URL")
 	if base == "" {
 		base = "http://localhost:8000"
+		log.Printf("WARNING: ML_SERVICE_URL not set — ML calls will target %s; set this env var in production", base)
 	}
 	return &Client{
 		baseURL:    base,
@@ -50,6 +54,9 @@ func (c *Client) post(ctx context.Context, path string, body interface{}, dst in
 		return fmt.Errorf("ml: build request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if key := os.Getenv("ML_API_KEY"); key != "" {
+		req.Header.Set("X-Api-Key", key)
+	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -99,6 +106,85 @@ func (c *Client) Insights(transactions []Transaction) (*InsightsResponse, error)
 	var result InsightsResponse
 	if err := c.post(ctx, "/insights", transactions, &result); err != nil {
 		return nil, err
+	}
+	return &result, nil
+}
+
+// ForecastStart calls POST /forecast/start and returns a job ID immediately (202 Accepted).
+// The ML service runs the forecast asynchronously; poll ForecastStatus for the result.
+func (c *Client) ForecastStart(transactions []Transaction, periods int) (*ForecastJobResponse, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), forecastStartTimeout)
+	defer cancel()
+
+	if periods <= 0 {
+		periods = 30
+	}
+	if periods > 365 {
+		periods = 365
+	}
+
+	payload, err := json.Marshal(transactions)
+	if err != nil {
+		return nil, fmt.Errorf("ml: marshal body: %w", err)
+	}
+
+	url := fmt.Sprintf("%s/forecast/start?periods=%d", c.baseURL, periods)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))
+	if err != nil {
+		return nil, fmt.Errorf("ml: build request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if key := os.Getenv("ML_API_KEY"); key != "" {
+		req.Header.Set("X-Api-Key", key)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("ml: request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusAccepted {
+		return nil, fmt.Errorf("ml: unexpected status %d from /forecast/start", resp.StatusCode)
+	}
+
+	var result ForecastJobResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("ml: decode response: %w", err)
+	}
+	return &result, nil
+}
+
+// ForecastStatus calls GET /forecast/status/{jobID} and returns the current job state.
+func (c *Client) ForecastStatus(jobID string) (*ForecastStatusResponse, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), forecastStatusTimeout)
+	defer cancel()
+
+	url := fmt.Sprintf("%s/forecast/status/%s", c.baseURL, jobID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("ml: build request: %w", err)
+	}
+	if key := os.Getenv("ML_API_KEY"); key != "" {
+		req.Header.Set("X-Api-Key", key)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("ml: request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, fmt.Errorf("ml: job %s not found", jobID)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("ml: unexpected status %d from /forecast/status", resp.StatusCode)
+	}
+
+	var result ForecastStatusResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("ml: decode response: %w", err)
 	}
 	return &result, nil
 }

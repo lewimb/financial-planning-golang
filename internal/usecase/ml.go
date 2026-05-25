@@ -35,7 +35,7 @@ func (uc *MLUseCase) fetchMLTransactions(userID int, year, month string) ([]ml.T
 	result := make([]ml.Transaction, 0, len(txs))
 	for _, t := range txs {
 		result = append(result, ml.Transaction{
-			Date:     t.Date.Format("2006-01-02"),
+			Date:     t.Date.UTC().Format("2006-01-02"),
 			Amount:   t.Amount,
 			Type:     t.Type,
 			Category: t.Category,
@@ -98,6 +98,31 @@ func (uc *MLUseCase) GetInsights(userID int, year, month string) (*ml.InsightsRe
 	result, err := uc.client.Insights(txs)
 	if err != nil {
 		log.Printf("ml: GetInsights userID=%d: %v", userID, err)
+		return nil, ErrMLUnavailable
+	}
+	return result, nil
+}
+
+// StartForecast submits an async forecast job to the ML service and returns a job ID.
+// Poll GetForecastStatus to retrieve the result.
+func (uc *MLUseCase) StartForecast(userID int, periods int, year, month string) (*ml.ForecastJobResponse, error) {
+	txs, err := uc.fetchMLTransactions(userID, year, month)
+	if err != nil {
+		return nil, err
+	}
+	result, err := uc.client.ForecastStart(txs, periods)
+	if err != nil {
+		log.Printf("ml: StartForecast userID=%d: %v", userID, err)
+		return nil, ErrMLUnavailable
+	}
+	return result, nil
+}
+
+// GetForecastStatus polls the ML service for the status of a previously started forecast job.
+func (uc *MLUseCase) GetForecastStatus(jobID string) (*ml.ForecastStatusResponse, error) {
+	result, err := uc.client.ForecastStatus(jobID)
+	if err != nil {
+		log.Printf("ml: GetForecastStatus jobID=%s: %v", jobID, err)
 		return nil, ErrMLUnavailable
 	}
 	return result, nil
