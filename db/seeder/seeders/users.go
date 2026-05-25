@@ -16,8 +16,9 @@ func SeedUsers(s goseeder.Seeder) {
 			log.Fatalf("seed users: bcrypt %s: %v", u.Email, err)
 		}
 		if _, err = s.DB.Exec(
-			`INSERT INTO users (email, name, password) VALUES ($1, $2, $3) ON CONFLICT (email) DO NOTHING`,
-			u.Email, u.Name, string(hash),
+			`INSERT INTO users (email, name, password, first_name, last_name, phone)
+			 VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (email) DO NOTHING`,
+			u.Email, u.Name, string(hash), u.FirstName, u.LastName, u.Phone,
 		); err != nil {
 			log.Fatalf("seed users: insert %s: %v", u.Email, err)
 		}

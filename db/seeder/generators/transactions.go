@@ -8,11 +8,13 @@ import (
 
 // TX is one generated transaction record.
 type TX struct {
-	Amount      int
-	Category    string
-	Type        string
-	Date        time.Time
-	Description string
+	Amount             int
+	Category           string
+	Type               string
+	Date               time.Time
+	Description        string
+	IsRecurring        bool
+	RecurrenceInterval string
 }
 
 // UserNames for logging, aligned with factories.Users.
@@ -31,52 +33,54 @@ type txTemplate struct {
 	category    string
 	description string
 	min, max    int
+	isRecurring bool
+	interval    string
 }
 
 var foodTemplates = []txTemplate{
-	{"Makanan & Minuman", "Makan siang di warteg", 12_000, 35_000},
-	{"Makanan & Minuman", "Makan malam di restoran", 45_000, 150_000},
-	{"Makanan & Minuman", "Sarapan nasi uduk", 10_000, 22_000},
-	{"Makanan & Minuman", "Kopi dan snack", 22_000, 65_000},
-	{"Makanan & Minuman", "Belanja groceries mingguan", 120_000, 400_000},
-	{"Makanan & Minuman", "Pesan GoFood/GrabFood", 35_000, 85_000},
-	{"Makanan & Minuman", "Beli buah dan sayur", 30_000, 80_000},
-	{"Makanan & Minuman", "Makan di food court mall", 40_000, 120_000},
+	{category: "Makanan & Minuman", description: "Makan siang di warteg", min: 12_000, max: 35_000},
+	{category: "Makanan & Minuman", description: "Makan malam di restoran", min: 45_000, max: 150_000},
+	{category: "Makanan & Minuman", description: "Sarapan nasi uduk", min: 10_000, max: 22_000},
+	{category: "Makanan & Minuman", description: "Kopi dan snack", min: 22_000, max: 65_000},
+	{category: "Makanan & Minuman", description: "Belanja groceries mingguan", min: 120_000, max: 400_000},
+	{category: "Makanan & Minuman", description: "Pesan GoFood/GrabFood", min: 35_000, max: 85_000},
+	{category: "Makanan & Minuman", description: "Beli buah dan sayur", min: 30_000, max: 80_000},
+	{category: "Makanan & Minuman", description: "Makan di food court mall", min: 40_000, max: 120_000},
 }
 
 var transportTemplates = []txTemplate{
-	{"Transportasi", "Grab ke kantor", 15_000, 42_000},
-	{"Transportasi", "Ojek online (Gojek)", 12_000, 35_000},
-	{"Transportasi", "KRL Commuter Line", 4_000, 8_000},
-	{"Transportasi", "Isi bensin motor", 50_000, 100_000},
-	{"Transportasi", "Parkir kendaraan", 5_000, 15_000},
-	{"Transportasi", "Bus Transjakarta", 3_500, 6_000},
-	{"Transportasi", "Taksi online ke bandara", 80_000, 180_000},
+	{category: "Transportasi", description: "Grab ke kantor", min: 15_000, max: 42_000},
+	{category: "Transportasi", description: "Ojek online (Gojek)", min: 12_000, max: 35_000},
+	{category: "Transportasi", description: "KRL Commuter Line", min: 4_000, max: 8_000},
+	{category: "Transportasi", description: "Isi bensin motor", min: 50_000, max: 100_000},
+	{category: "Transportasi", description: "Parkir kendaraan", min: 5_000, max: 15_000},
+	{category: "Transportasi", description: "Bus Transjakarta", min: 3_500, max: 6_000},
+	{category: "Transportasi", description: "Taksi online ke bandara", min: 80_000, max: 180_000},
 }
 
 var otherTemplates = []txTemplate{
-	{"Hiburan & Rekreasi", "Nonton bioskop CGV", 55_000, 100_000},
-	{"Hiburan & Rekreasi", "Langganan Spotify/Netflix", 54_000, 169_000},
-	{"Hiburan & Rekreasi", "Karaoke bersama teman", 80_000, 200_000},
-	{"Hiburan & Rekreasi", "Main game mobile (top-up)", 50_000, 200_000},
-	{"Belanja", "Beli pakaian di Tokopedia", 100_000, 500_000},
-	{"Belanja", "Belanja perlengkapan rumah", 150_000, 800_000},
-	{"Belanja", "Beli skincare/toiletries", 100_000, 350_000},
-	{"Belanja", "Beli peralatan dapur", 80_000, 400_000},
-	{"Kesehatan", "Beli obat di apotek", 30_000, 150_000},
-	{"Kesehatan", "Konsultasi dokter umum", 100_000, 350_000},
-	{"Kesehatan", "Vitamin dan suplemen", 80_000, 250_000},
-	{"Pendidikan", "Kursus online (Udemy/Coursera)", 80_000, 350_000},
-	{"Pendidikan", "Beli buku teknis", 50_000, 250_000},
-	{"Tagihan", "Tagihan telepon seluler", 100_000, 200_000},
-	{"Tagihan", "Cicilan pinjaman lain", 200_000, 600_000},
+	{category: "Hiburan & Rekreasi", description: "Nonton bioskop CGV", min: 55_000, max: 100_000},
+	{category: "Hiburan & Rekreasi", description: "Langganan Spotify/Netflix", min: 54_000, max: 169_000, isRecurring: true, interval: "MONTHLY"},
+	{category: "Hiburan & Rekreasi", description: "Karaoke bersama teman", min: 80_000, max: 200_000},
+	{category: "Hiburan & Rekreasi", description: "Main game mobile (top-up)", min: 50_000, max: 200_000},
+	{category: "Belanja", description: "Beli pakaian di Tokopedia", min: 100_000, max: 500_000},
+	{category: "Belanja", description: "Belanja perlengkapan rumah", min: 150_000, max: 800_000},
+	{category: "Belanja", description: "Beli skincare/toiletries", min: 100_000, max: 350_000},
+	{category: "Belanja", description: "Beli peralatan dapur", min: 80_000, max: 400_000},
+	{category: "Kesehatan", description: "Beli obat di apotek", min: 30_000, max: 150_000},
+	{category: "Kesehatan", description: "Konsultasi dokter umum", min: 100_000, max: 350_000},
+	{category: "Kesehatan", description: "Vitamin dan suplemen", min: 80_000, max: 250_000},
+	{category: "Pendidikan", description: "Kursus online (Udemy/Coursera)", min: 80_000, max: 350_000},
+	{category: "Pendidikan", description: "Beli buku teknis", min: 50_000, max: 250_000},
+	{category: "Tagihan", description: "Tagihan telepon seluler", min: 100_000, max: 200_000, isRecurring: true, interval: "MONTHLY"},
+	{category: "Tagihan", description: "Cicilan pinjaman lain", min: 200_000, max: 600_000, isRecurring: true, interval: "MONTHLY"},
 }
 
 var utilityTemplates = []txTemplate{
-	{"Utilitas", "Tagihan listrik PLN", 200_000, 450_000},
-	{"Utilitas", "Tagihan internet IndiHome", 200_000, 350_000},
-	{"Utilitas", "Tagihan PDAM air", 80_000, 150_000},
-	{"Utilitas", "Beli gas LPG 3kg", 20_000, 30_000},
+	{category: "Utilitas", description: "Tagihan listrik PLN", min: 200_000, max: 450_000, isRecurring: true, interval: "MONTHLY"},
+	{category: "Utilitas", description: "Tagihan internet IndiHome", min: 200_000, max: 350_000, isRecurring: true, interval: "MONTHLY"},
+	{category: "Utilitas", description: "Tagihan PDAM air", min: 80_000, max: 150_000, isRecurring: true, interval: "MONTHLY"},
+	{category: "Utilitas", description: "Beli gas LPG 3kg", min: 20_000, max: 30_000, isRecurring: true, interval: "MONTHLY"},
 }
 
 // Generate produces deterministic transaction history for the given user index.
@@ -104,11 +108,13 @@ func Generate(userIndex int) []TX {
 		}
 		variation := rng.Intn(300_000) - 150_000
 		result = append(result, TX{
-			Amount:      base + variation,
-			Category:    "Gaji",
-			Type:        "INCOME",
-			Date:        date(monthStart.Year(), monthStart.Month(), salaryDay),
-			Description: fmt.Sprintf("Gaji bulan %s %d", monthStart.Month().String(), monthStart.Year()),
+			Amount:             base + variation,
+			Category:           "Gaji",
+			Type:               "INCOME",
+			Date:               date(monthStart.Year(), monthStart.Month(), salaryDay),
+			Description:        fmt.Sprintf("Gaji bulan %s %d", monthStart.Month().String(), monthStart.Year()),
+			IsRecurring:        true,
+			RecurrenceInterval: "MONTHLY",
 		})
 
 		// INCOME — freelance for Siti (1) and Dewi (3)
@@ -182,11 +188,13 @@ func Generate(userIndex int) []TX {
 
 func fromTemplate(rng *rand.Rand, tpl txTemplate, d time.Time) TX {
 	return TX{
-		Amount:      tpl.min + rng.Intn(tpl.max-tpl.min+1),
-		Category:    tpl.category,
-		Type:        "EXPENSE",
-		Date:        d,
-		Description: tpl.description,
+		Amount:             tpl.min + rng.Intn(tpl.max-tpl.min+1),
+		Category:           tpl.category,
+		Type:               "EXPENSE",
+		Date:               d,
+		Description:        tpl.description,
+		IsRecurring:        tpl.isRecurring,
+		RecurrenceInterval: tpl.interval,
 	}
 }
 

@@ -2,19 +2,22 @@ package factories
 
 // UserSeed holds plaintext credentials for one demo user.
 type UserSeed struct {
-	Email    string
-	Name     string
-	Password string
+	Email     string
+	Name      string
+	Password  string
+	FirstName string
+	LastName  string
+	Phone     string
 }
 
 // Users are 5 demo users representing common Indonesian employment profiles.
 // All share Password123 for easy dev/demo access.
 var Users = []UserSeed{
-	{Email: "budi.santoso@gmail.com", Name: "Budi Santoso", Password: "Password123"},
-	{Email: "siti.rahayu@gmail.com", Name: "Siti Rahayu", Password: "Password123"},
-	{Email: "ahmad.fauzi@gmail.com", Name: "Ahmad Fauzi", Password: "Password123"},
-	{Email: "dewi.permata@gmail.com", Name: "Dewi Permata", Password: "Password123"},
-	{Email: "eko.prabowo@gmail.com", Name: "Eko Prabowo", Password: "Password123"},
+	{Email: "budi.santoso@gmail.com", Name: "Budi Santoso", Password: "Password123", FirstName: "Budi", LastName: "Santoso", Phone: "+6281234567890"},
+	{Email: "siti.rahayu@gmail.com", Name: "Siti Rahayu", Password: "Password123", FirstName: "Siti", LastName: "Rahayu", Phone: "+6282345678901"},
+	{Email: "ahmad.fauzi@gmail.com", Name: "Ahmad Fauzi", Password: "Password123", FirstName: "Ahmad", LastName: "Fauzi", Phone: "+6283456789012"},
+	{Email: "dewi.permata@gmail.com", Name: "Dewi Permata", Password: "Password123", FirstName: "Dewi", LastName: "Permata", Phone: "+6284567890123"},
+	{Email: "eko.prabowo@gmail.com", Name: "Eko Prabowo", Password: "Password123", FirstName: "Eko", LastName: "Prabowo", Phone: "+6285678901234"},
 }
 
 // ProfileSeed maps to UpsertFinancialProfileRequest fields.
@@ -202,4 +205,124 @@ var AiLogs = []AiLogSeed{
 	},
 }
 
-func intPtr(v int) *int { return &v }
+// NotificationPrefSeed holds notification preference settings per user.
+type NotificationPrefSeed struct {
+	BudgetAlerts  bool
+	GoalReminders bool
+	AnomalyAlerts bool
+	WeeklySummary bool
+	PushEnabled   bool
+}
+
+// NotificationPrefs index-aligned with Users.
+var NotificationPrefs = []NotificationPrefSeed{
+	// Budi — full notifications enabled
+	{BudgetAlerts: true, GoalReminders: true, AnomalyAlerts: true, WeeklySummary: true, PushEnabled: true},
+	// Siti — budget and goal alerts only
+	{BudgetAlerts: true, GoalReminders: true, AnomalyAlerts: false, WeeklySummary: false, PushEnabled: false},
+	// Ahmad — all enabled except push
+	{BudgetAlerts: true, GoalReminders: true, AnomalyAlerts: true, WeeklySummary: true, PushEnabled: false},
+	// Dewi — all enabled
+	{BudgetAlerts: true, GoalReminders: true, AnomalyAlerts: true, WeeklySummary: false, PushEnabled: true},
+	// Eko — minimal
+	{BudgetAlerts: true, GoalReminders: true, AnomalyAlerts: false, WeeklySummary: false, PushEnabled: false},
+}
+
+// NotificationSeed holds data for one notification row.
+type NotificationSeed struct {
+	Type       string
+	Title      string
+	Message    string
+	EntityType *string
+	IsRead     bool
+}
+
+// Notifications index-aligned with Users.
+var Notifications = [][]NotificationSeed{
+	// Budi
+	{
+		{Type: "BUDGET_WARNING", Title: "Budget hampir habis: Makanan & Minuman", Message: "Anggaran Makanan & Minuman Anda telah mencapai 85%. Sisa anggaran: Rp 300.000.", EntityType: strPtr("budget"), IsRead: true},
+		{Type: "BUDGET_EXCEEDED", Title: "Budget terlampaui: Transportasi", Message: "Anggaran Transportasi Anda bulan ini telah terlampaui sebesar 12%. Pertimbangkan untuk mengurangi pengeluaran transportasi.", EntityType: strPtr("budget"), IsRead: false},
+		{Type: "GOAL_REMINDER", Title: "Pengingat: Dana Darurat", Message: "Anda telah mencapai 50% dari target Dana Darurat (Rp 15 juta dari Rp 30 juta). Deadline: 31 Desember 2026.", EntityType: strPtr("goal"), IsRead: false},
+	},
+	// Siti
+	{
+		{Type: "BUDGET_EXCEEDED", Title: "Budget terlampaui: Belanja", Message: "Anggaran Belanja Anda bulan ini telah terlampaui. Total pengeluaran belanja melebihi batas Rp 2.000.000.", EntityType: strPtr("budget"), IsRead: false},
+		{Type: "GOAL_REMINDER", Title: "Pengingat: Modal Usaha Tambahan", Message: "Progress Modal Usaha Tambahan Anda: Rp 8 juta dari Rp 20 juta (40%). Deadline: 1 Januari 2027.", EntityType: strPtr("goal"), IsRead: true},
+		{Type: "BUDGET_WARNING", Title: "Budget hampir habis: Tagihan", Message: "Anggaran Tagihan Anda telah mencapai 92%. Sisa anggaran: Rp 80.000.", EntityType: strPtr("budget"), IsRead: false},
+	},
+	// Ahmad
+	{
+		{Type: "GOAL_REMINDER", Title: "Pengingat: Biaya Umroh", Message: "Hampir mencapai target! Dana Umroh Anda sudah Rp 20 juta dari Rp 25 juta (80%). Deadline: 1 September 2026.", EntityType: strPtr("goal"), IsRead: false},
+		{Type: "BUDGET_WARNING", Title: "Budget hampir habis: Utilitas", Message: "Anggaran Utilitas Anda telah mencapai 91%. Sisa anggaran: Rp 45.000.", EntityType: strPtr("budget"), IsRead: true},
+		{Type: "GOAL_REMINDER", Title: "Pengingat: Dana Pendidikan Anak", Message: "Progress Dana Pendidikan Anak: Rp 5 juta dari Rp 50 juta (10%). Mulai tingkatkan kontribusi bulanan.", EntityType: strPtr("goal"), IsRead: false},
+	},
+	// Dewi
+	{
+		{Type: "BUDGET_EXCEEDED", Title: "Budget terlampaui: Hiburan & Rekreasi", Message: "Anggaran Hiburan & Rekreasi Anda bulan ini telah terlampaui. Kurangi pengeluaran hiburan bulan depan.", EntityType: strPtr("budget"), IsRead: false},
+		{Type: "GOAL_REMINDER", Title: "Pengingat: Laptop MacBook Pro M3", Message: "Progress MacBook Pro M3: Rp 13 juta dari Rp 22 juta (59%). Deadline: 1 Agustus 2026 — segera capai target!", EntityType: strPtr("goal"), IsRead: false},
+		{Type: "BUDGET_WARNING", Title: "Budget hampir habis: Belanja", Message: "Anggaran Belanja Anda telah mencapai 78%. Sisa anggaran: Rp 550.000.", EntityType: strPtr("budget"), IsRead: true},
+	},
+	// Eko
+	{
+		{Type: "BUDGET_WARNING", Title: "Budget hampir habis: Makanan & Minuman", Message: "Anggaran Makanan & Minuman Anda telah mencapai 82%. Sisa anggaran: Rp 144.000.", EntityType: strPtr("budget"), IsRead: false},
+		{Type: "GOAL_REMINDER", Title: "Pengingat: Motor Honda Beat", Message: "Progress Motor Honda Beat: Rp 4 juta dari Rp 10 juta (40%). Deadline: 31 Desember 2026.", EntityType: strPtr("goal"), IsRead: true},
+	},
+}
+
+// ActivityLogSeed holds data for one activity log row.
+type ActivityLogSeed struct {
+	Action      string
+	EntityType  string
+	Description string
+}
+
+// ActivityLogs index-aligned with Users.
+var ActivityLogs = [][]ActivityLogSeed{
+	// Budi
+	{
+		{Action: "CREATE", EntityType: "transaction", Description: "Created income transaction: Gaji 10000000"},
+		{Action: "CREATE", EntityType: "budget", Description: "Created monthly budget for Makanan & Minuman"},
+		{Action: "CREATE", EntityType: "goal", Description: "Created goal: Dana Darurat"},
+		{Action: "UPDATE", EntityType: "goal", Description: "Updated contribution to Dana Darurat: Rp 15.000.000"},
+		{Action: "CREATE", EntityType: "transaction", Description: "Created expense transaction: Transportasi 35000"},
+		{Action: "UPDATE", EntityType: "budget", Description: "Updated budget limit for Hiburan & Rekreasi to Rp 1.000.000"},
+	},
+	// Siti
+	{
+		{Action: "CREATE", EntityType: "transaction", Description: "Created income transaction: Gaji 7500000"},
+		{Action: "CREATE", EntityType: "budget", Description: "Created monthly budget for Belanja"},
+		{Action: "CREATE", EntityType: "goal", Description: "Created goal: Modal Usaha Tambahan"},
+		{Action: "UPDATE", EntityType: "goal", Description: "Updated contribution to Modal Usaha Tambahan: Rp 8.000.000"},
+		{Action: "CREATE", EntityType: "transaction", Description: "Created income transaction: Freelance 2500000"},
+	},
+	// Ahmad
+	{
+		{Action: "CREATE", EntityType: "transaction", Description: "Created income transaction: Gaji 6000000"},
+		{Action: "CREATE", EntityType: "goal", Description: "Created goal: Biaya Umroh"},
+		{Action: "UPDATE", EntityType: "goal", Description: "Updated contribution to Biaya Umroh: Rp 20.000.000"},
+		{Action: "CREATE", EntityType: "goal", Description: "Created goal: Dana Pendidikan Anak"},
+		{Action: "UPDATE", EntityType: "goal", Description: "Completed goal: Renovasi Dapur"},
+		{Action: "CREATE", EntityType: "budget", Description: "Created yearly budget for Pendidikan"},
+	},
+	// Dewi
+	{
+		{Action: "CREATE", EntityType: "transaction", Description: "Created income transaction: Gaji 8500000"},
+		{Action: "CREATE", EntityType: "transaction", Description: "Created income transaction: Freelance 3000000"},
+		{Action: "CREATE", EntityType: "goal", Description: "Created goal: Laptop MacBook Pro M3"},
+		{Action: "UPDATE", EntityType: "goal", Description: "Updated contribution to Laptop MacBook Pro M3: Rp 13.000.000"},
+		{Action: "CREATE", EntityType: "budget", Description: "Created yearly budget for Peralatan Kerja"},
+		{Action: "DELETE", EntityType: "transaction", Description: "Deleted duplicate expense transaction"},
+	},
+	// Eko
+	{
+		{Action: "CREATE", EntityType: "transaction", Description: "Created income transaction: Gaji 2500000"},
+		{Action: "CREATE", EntityType: "budget", Description: "Created monthly budget for Pendidikan"},
+		{Action: "CREATE", EntityType: "goal", Description: "Created goal: Motor Honda Beat"},
+		{Action: "UPDATE", EntityType: "goal", Description: "Updated contribution to Motor Honda Beat: Rp 4.000.000"},
+		{Action: "CREATE", EntityType: "goal", Description: "Created goal: Laptop untuk Kuliah"},
+	},
+}
+
+func intPtr(v int) *int    { return &v }
+func strPtr(v string) *string { return &v }

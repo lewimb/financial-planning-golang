@@ -32,6 +32,9 @@ func Connect() *sql.DB {
 // Truncate clears all seeded tables in FK-safe order and resets sequences.
 func Truncate(db *sql.DB) {
 	tables := []string{
+		"notifications",
+		"notification_preferences",
+		"activity_logs",
 		"ai_logs",
 		"user_financial_goals",
 		"user_financial_profiles",

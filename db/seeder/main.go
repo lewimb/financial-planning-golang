@@ -34,6 +34,9 @@ func main() {
 	goseeder.Register(seeders.SeedBudgets)
 	goseeder.Register(seeders.SeedGoals)
 	goseeder.Register(seeders.SeedAiLogs)
+	goseeder.Register(seeders.SeedNotificationPreferences)
+	goseeder.Register(seeders.SeedNotifications)
+	goseeder.Register(seeders.SeedActivityLogs)
 
 	var opts []goseeder.ConfigOption
 	if *only != "" {
