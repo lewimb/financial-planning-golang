@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(go build *)",
-      "Skill(superpowers:brainstorming)",
-      "Bash(go vet *)"
-    ]
-  }
-}
