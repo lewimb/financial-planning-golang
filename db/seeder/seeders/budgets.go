@@ -23,22 +23,26 @@ func SeedBudgets(s goseeder.Seeder) {
 		for _, b := range factories.Budgets[i] {
 			var err error
 			if b.Period == "MONTHLY" {
-				// Unique constraint fires on (user_id, category, period, month, year)
+				// Recurring — one per user+category, no month/year stored.
 				_, err = s.DB.Exec(`
-					INSERT INTO budgets (user_id, category, period, month, year, limit_amount, alert_threshold)
-					VALUES ($1,$2,$3,$4,$5,$6,$7)
-					ON CONFLICT (user_id, category, period, month, year) DO NOTHING`,
-					uid, b.Category, b.Period, b.Month, b.Year, b.LimitAmount, b.AlertThreshold,
-				)
-			} else {
-				// YEARLY: month is NULL — PostgreSQL unique constraint treats NULLs as distinct,
-				// so we guard with WHERE NOT EXISTS to prevent duplicates on re-run.
-				_, err = s.DB.Exec(`
-					INSERT INTO budgets (user_id, category, period, month, year, limit_amount, alert_threshold)
-					SELECT $1,$2,$3,NULL,$4,$5,$6
+					INSERT INTO budgets (user_id, category, period, limit_amount, alert_threshold)
+					SELECT $1::int,$2::varchar,$3::varchar,$4::int,$5::int
 					WHERE NOT EXISTS (
 						SELECT 1 FROM budgets
-						WHERE user_id=$1 AND category=$2 AND period='YEARLY' AND month IS NULL AND year=$4 AND deleted_at IS NULL
+						WHERE user_id=$1 AND category=$2 AND period='MONTHLY' AND deleted_at IS NULL
+					)`,
+					uid, b.Category, b.Period, b.LimitAmount, b.AlertThreshold,
+				)
+			} else {
+				// YEARLY: scoped to b.Year. PostgreSQL unique constraints treat
+				// NULLs as distinct, and we guard with WHERE NOT EXISTS anyway
+				// to keep the seeder idempotent on re-run.
+				_, err = s.DB.Exec(`
+					INSERT INTO budgets (user_id, category, period, year, limit_amount, alert_threshold)
+					SELECT $1::int,$2::varchar,$3::varchar,$4::int,$5::int,$6::int
+					WHERE NOT EXISTS (
+						SELECT 1 FROM budgets
+						WHERE user_id=$1 AND category=$2 AND period='YEARLY' AND year=$4 AND deleted_at IS NULL
 					)`,
 					uid, b.Category, b.Period, b.Year, b.LimitAmount, b.AlertThreshold,
 				)

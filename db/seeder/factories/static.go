@@ -95,51 +95,51 @@ var Profiles = []ProfileSeed{
 type BudgetSeed struct {
 	Category       string
 	Period         string
-	Month          *int // nil for YEARLY
-	Year           int
+	Year           int // only used when Period == "YEARLY"
 	LimitAmount    int
 	AlertThreshold int
 }
 
-// Budgets index-aligned with Users — current month (May 2026) + yearly.
+// Budgets index-aligned with Users. MONTHLY budgets recur every month (no
+// month/year stored); YEARLY budgets are scoped to the given Year.
 var Budgets = [][]BudgetSeed{
 	// Budi
 	{
-		{Category: "Makanan & Minuman", Period: "MONTHLY", Month: intPtr(5), Year: 2026, LimitAmount: 2_000_000, AlertThreshold: 80},
-		{Category: "Transportasi", Period: "MONTHLY", Month: intPtr(5), Year: 2026, LimitAmount: 800_000, AlertThreshold: 80},
-		{Category: "Hiburan & Rekreasi", Period: "MONTHLY", Month: intPtr(5), Year: 2026, LimitAmount: 1_000_000, AlertThreshold: 75},
-		{Category: "Belanja", Period: "MONTHLY", Month: intPtr(5), Year: 2026, LimitAmount: 1_500_000, AlertThreshold: 80},
-		{Category: "Utilitas", Period: "MONTHLY", Month: intPtr(5), Year: 2026, LimitAmount: 600_000, AlertThreshold: 90},
-		{Category: "Kesehatan", Period: "YEARLY", Month: nil, Year: 2026, LimitAmount: 5_000_000, AlertThreshold: 80},
+		{Category: "Makanan & Minuman", Period: "MONTHLY", LimitAmount: 2_000_000, AlertThreshold: 80},
+		{Category: "Transportasi", Period: "MONTHLY", LimitAmount: 800_000, AlertThreshold: 80},
+		{Category: "Hiburan & Rekreasi", Period: "MONTHLY", LimitAmount: 1_000_000, AlertThreshold: 75},
+		{Category: "Belanja", Period: "MONTHLY", LimitAmount: 1_500_000, AlertThreshold: 80},
+		{Category: "Utilitas", Period: "MONTHLY", LimitAmount: 600_000, AlertThreshold: 90},
+		{Category: "Kesehatan", Period: "YEARLY", Year: 2026, LimitAmount: 5_000_000, AlertThreshold: 80},
 	},
 	// Siti
 	{
-		{Category: "Makanan & Minuman", Period: "MONTHLY", Month: intPtr(5), Year: 2026, LimitAmount: 1_500_000, AlertThreshold: 80},
-		{Category: "Transportasi", Period: "MONTHLY", Month: intPtr(5), Year: 2026, LimitAmount: 600_000, AlertThreshold: 80},
-		{Category: "Belanja", Period: "MONTHLY", Month: intPtr(5), Year: 2026, LimitAmount: 2_000_000, AlertThreshold: 85},
-		{Category: "Tagihan", Period: "MONTHLY", Month: intPtr(5), Year: 2026, LimitAmount: 1_000_000, AlertThreshold: 90},
-		{Category: "Investasi", Period: "YEARLY", Month: nil, Year: 2026, LimitAmount: 20_000_000, AlertThreshold: 50},
+		{Category: "Makanan & Minuman", Period: "MONTHLY", LimitAmount: 1_500_000, AlertThreshold: 80},
+		{Category: "Transportasi", Period: "MONTHLY", LimitAmount: 600_000, AlertThreshold: 80},
+		{Category: "Belanja", Period: "MONTHLY", LimitAmount: 2_000_000, AlertThreshold: 85},
+		{Category: "Tagihan", Period: "MONTHLY", LimitAmount: 1_000_000, AlertThreshold: 90},
+		{Category: "Investasi", Period: "YEARLY", Year: 2026, LimitAmount: 20_000_000, AlertThreshold: 50},
 	},
 	// Ahmad
 	{
-		{Category: "Makanan & Minuman", Period: "MONTHLY", Month: intPtr(5), Year: 2026, LimitAmount: 1_000_000, AlertThreshold: 80},
-		{Category: "Transportasi", Period: "MONTHLY", Month: intPtr(5), Year: 2026, LimitAmount: 400_000, AlertThreshold: 80},
-		{Category: "Utilitas", Period: "MONTHLY", Month: intPtr(5), Year: 2026, LimitAmount: 500_000, AlertThreshold: 90},
-		{Category: "Pendidikan", Period: "YEARLY", Month: nil, Year: 2026, LimitAmount: 3_000_000, AlertThreshold: 75},
+		{Category: "Makanan & Minuman", Period: "MONTHLY", LimitAmount: 1_000_000, AlertThreshold: 80},
+		{Category: "Transportasi", Period: "MONTHLY", LimitAmount: 400_000, AlertThreshold: 80},
+		{Category: "Utilitas", Period: "MONTHLY", LimitAmount: 500_000, AlertThreshold: 90},
+		{Category: "Pendidikan", Period: "YEARLY", Year: 2026, LimitAmount: 3_000_000, AlertThreshold: 75},
 	},
 	// Dewi
 	{
-		{Category: "Makanan & Minuman", Period: "MONTHLY", Month: intPtr(5), Year: 2026, LimitAmount: 1_800_000, AlertThreshold: 80},
-		{Category: "Transportasi", Period: "MONTHLY", Month: intPtr(5), Year: 2026, LimitAmount: 700_000, AlertThreshold: 80},
-		{Category: "Hiburan & Rekreasi", Period: "MONTHLY", Month: intPtr(5), Year: 2026, LimitAmount: 1_500_000, AlertThreshold: 75},
-		{Category: "Belanja", Period: "MONTHLY", Month: intPtr(5), Year: 2026, LimitAmount: 2_500_000, AlertThreshold: 80},
-		{Category: "Peralatan Kerja", Period: "YEARLY", Month: nil, Year: 2026, LimitAmount: 10_000_000, AlertThreshold: 80},
+		{Category: "Makanan & Minuman", Period: "MONTHLY", LimitAmount: 1_800_000, AlertThreshold: 80},
+		{Category: "Transportasi", Period: "MONTHLY", LimitAmount: 700_000, AlertThreshold: 80},
+		{Category: "Hiburan & Rekreasi", Period: "MONTHLY", LimitAmount: 1_500_000, AlertThreshold: 75},
+		{Category: "Belanja", Period: "MONTHLY", LimitAmount: 2_500_000, AlertThreshold: 80},
+		{Category: "Peralatan Kerja", Period: "YEARLY", Year: 2026, LimitAmount: 10_000_000, AlertThreshold: 80},
 	},
 	// Eko
 	{
-		{Category: "Makanan & Minuman", Period: "MONTHLY", Month: intPtr(5), Year: 2026, LimitAmount: 800_000, AlertThreshold: 80},
-		{Category: "Transportasi", Period: "MONTHLY", Month: intPtr(5), Year: 2026, LimitAmount: 300_000, AlertThreshold: 80},
-		{Category: "Pendidikan", Period: "MONTHLY", Month: intPtr(5), Year: 2026, LimitAmount: 500_000, AlertThreshold: 80},
+		{Category: "Makanan & Minuman", Period: "MONTHLY", LimitAmount: 800_000, AlertThreshold: 80},
+		{Category: "Transportasi", Period: "MONTHLY", LimitAmount: 300_000, AlertThreshold: 80},
+		{Category: "Pendidikan", Period: "MONTHLY", LimitAmount: 500_000, AlertThreshold: 80},
 	},
 }
 
@@ -324,5 +324,4 @@ var ActivityLogs = [][]ActivityLogSeed{
 	},
 }
 
-func intPtr(v int) *int    { return &v }
 func strPtr(v string) *string { return &v }
