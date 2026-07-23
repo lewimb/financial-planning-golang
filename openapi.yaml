@@ -207,19 +207,17 @@ components:
     # ── Budgets ───────────────────────────────────────────────────────────────
     CreateBudgetRequest:
       type: object
-      required: [category, period, year, limit_amount]
+      required: [category, period, limit_amount]
       properties:
         category:
           type: string
         period:
           type: string
           enum: [MONTHLY, YEARLY]
-        month:
-          type: integer
-          nullable: true
-          description: 1–12. Required when period is MONTHLY; omit for YEARLY.
         year:
           type: integer
+          nullable: true
+          description: Required (and locked to the current year by the UI) when period is YEARLY. Ignored for MONTHLY — monthly budgets recur every month and store no month/year.
         limit_amount:
           type: integer
         alert_threshold:
@@ -229,8 +227,6 @@ components:
       example:
         category: "Food"
         period: "MONTHLY"
-        month: 5
-        year: 2025
         limit_amount: 2000000
         alert_threshold: 80
 
@@ -267,8 +263,11 @@ components:
         month:
           type: integer
           nullable: true
+          description: Always null. Kept for backward compatibility with existing clients.
         year:
           type: integer
+          nullable: true
+          description: Null for MONTHLY (recurring); the specific calendar year for YEARLY.
         limit_amount:
           type: integer
         alert_threshold:
@@ -296,8 +295,11 @@ components:
         month:
           type: integer
           nullable: true
+          description: Always null. Kept for backward compatibility with existing clients.
         year:
           type: integer
+          nullable: true
+          description: Null for MONTHLY (recurring); the specific calendar year for YEARLY.
         limitAmount:
           type: integer
         alertThreshold:
@@ -322,8 +324,11 @@ components:
         month:
           type: integer
           nullable: true
+          description: Always null. Kept for backward compatibility with existing clients.
         year:
           type: integer
+          nullable: true
+          description: Null for MONTHLY (recurring); the specific calendar year for YEARLY.
         limit_amount:
           type: integer
         alert_threshold:
