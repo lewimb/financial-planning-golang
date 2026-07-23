@@ -8,7 +8,7 @@ type Budget struct {
 	Category       string    `json:"category"`
 	Period         string    `json:"period"`
 	Month          *int      `json:"month"`
-	Year           int       `json:"year"`
+	Year           *int      `json:"year"`
 	LimitAmount    int       `json:"limit_amount"`
 	AlertThreshold int       `json:"alert_threshold"`
 	CreatedAt      time.Time `json:"created_at"`
@@ -20,7 +20,7 @@ type BudgetResponse struct {
 	Category       string    `json:"category"`
 	Period         string    `json:"period"`
 	Month          *int      `json:"month"`
-	Year           int       `json:"year"`
+	Year           *int      `json:"year"`
 	LimitAmount    int       `json:"limitAmount"`
 	AlertThreshold int       `json:"alertThreshold"`
 	CreatedAt      time.Time `json:"createdAt"`
@@ -38,7 +38,7 @@ type UpdateBudgetResponse struct {
 	Category       string `json:"category"`
 	Period         string `json:"period"`
 	Month          *int   `json:"month"`
-	Year           int    `json:"year"`
+	Year           *int   `json:"year"`
 	LimitAmount    int    `json:"limit_amount"`
 	AlertThreshold int    `json:"alert_threshold"`
 }
@@ -47,7 +47,7 @@ type CreateBudgetRequest struct {
 	Category       string `json:"category"`
 	Period         string `json:"period"`
 	Month          *int   `json:"month"`
-	Year           int    `json:"year"`
+	Year           *int   `json:"year"`
 	LimitAmount    int    `json:"limit_amount"`
 	AlertThreshold int    `json:"alert_threshold"`
 }

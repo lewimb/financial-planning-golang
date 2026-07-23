@@ -46,7 +46,7 @@ func (r *budgetRepository) GetAll(userID int, category, month, year string) ([]d
 	}
 	defer rows.Close()
 
-	var result []domain.Budget
+	result := []domain.Budget{}
 	for rows.Next() {
 		var b domain.Budget
 		if err := rows.Scan(&b.ID, &b.UserID, &b.Category, &b.Period, &b.Month, &b.Year, &b.LimitAmount, &b.AlertThreshold, &b.CreatedAt); err != nil {
@@ -99,9 +99,8 @@ func (r *budgetRepository) GetUsage(userID, month, year int) ([]domain.BudgetUsa
 			AND t.type = 'EXPENSE'
 			AND t.deleted_at IS NULL
 		WHERE b.user_id = $1
-		AND b.year = $3
-		AND ((b.period = 'MONTHLY' AND b.month = $2) OR (b.period = 'YEARLY'))
 		AND b.deleted_at IS NULL
+		AND (b.period = 'MONTHLY' OR (b.period = 'YEARLY' AND b.year = $3))
 		GROUP BY b.id, b.category, b.period, b.limit_amount, b.alert_threshold
 		ORDER BY b.created_at DESC
 	`, userID, month, year, prevMonth, prevYear)
@@ -145,13 +144,22 @@ func (r *budgetRepository) GetUsage(userID, month, year int) ([]domain.BudgetUsa
 
 func (r *budgetRepository) Create(userID int, req domain.CreateBudgetRequest) error {
 	var exists bool
-	err := r.db.QueryRow(`
-		SELECT EXISTS (
-			SELECT 1 FROM budgets
-			WHERE user_id = $1 AND category = $2 AND period = $3 AND year = $4
-			AND (month = $5 OR ($5 IS NULL AND month IS NULL))
-		)
-	`, userID, req.Category, req.Period, req.Year, req.Month).Scan(&exists)
+	var err error
+	if req.Period == "MONTHLY" {
+		err = r.db.QueryRow(`
+			SELECT EXISTS (
+				SELECT 1 FROM budgets
+				WHERE user_id = $1 AND category = $2 AND period = 'MONTHLY' AND deleted_at IS NULL
+			)
+		`, userID, req.Category).Scan(&exists)
+	} else {
+		err = r.db.QueryRow(`
+			SELECT EXISTS (
+				SELECT 1 FROM budgets
+				WHERE user_id = $1 AND category = $2 AND period = 'YEARLY' AND year = $3 AND deleted_at IS NULL
+			)
+		`, userID, req.Category, req.Year).Scan(&exists)
+	}
 	if err != nil {
 		return err
 	}

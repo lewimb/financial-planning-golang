@@ -46,17 +46,20 @@ func (uc *BudgetUseCase) Create(userID int, req domain.CreateBudgetRequest) erro
 	if req.Period != "MONTHLY" && req.Period != "YEARLY" {
 		return errors.New("invalid period")
 	}
-	if req.Year == 0 {
-		return errors.New("year is required")
-	}
 	if req.LimitAmount <= 0 {
 		return errors.New("limit must be greater than 0")
 	}
-	if req.Period == "MONTHLY" && req.Month == nil {
-		return errors.New("month required for monthly budget")
-	}
-	if req.Period == "YEARLY" {
+	if req.Period == "MONTHLY" {
+		// Monthly budgets recur every month — no fixed month/year is stored,
+		// so any client-supplied month/year is ignored rather than validated.
 		req.Month = nil
+		req.Year = nil
+	} else {
+		// Yearly budgets are scoped to one calendar year.
+		req.Month = nil
+		if req.Year == nil || *req.Year == 0 {
+			return errors.New("year is required for yearly budget")
+		}
 	}
 	if req.AlertThreshold == 0 {
 		req.AlertThreshold = 80
