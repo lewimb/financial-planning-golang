@@ -1472,12 +1472,17 @@ paths:
           in: query
           schema:
             type: string
-          description: Filter by month number
+          description: >
+            Ignored. MONTHLY budgets recur (no stored month) and YEARLY
+            budgets never had one — kept for backward compatibility only.
         - name: year
           in: query
           schema:
             type: string
-          description: Filter by 4-digit year
+          description: >
+            Filter by 4-digit year. Only scopes YEARLY budgets; MONTHLY
+            budgets recur every year and are always returned regardless
+            of this filter.
       responses:
         '200':
           description: Budget list

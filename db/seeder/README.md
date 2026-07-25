@@ -37,10 +37,13 @@ Seeders run in registration order to satisfy FK constraints:
 
 1. **SeedUsers** — 5 demo users
 2. **SeedFinancialProfiles** — financial profile + goal tags per user
-3. **SeedTransactions** — 7 months of transaction history (Nov 2025 – May 2026)
-4. **SeedBudgets** — monthly + yearly budgets for current period
+3. **SeedTransactions** — rolling 7 months of transaction history ending in the current month
+4. **SeedBudgets** — recurring monthly budgets + yearly budgets for the current year
 5. **SeedGoals** — financial savings goals
 6. **SeedAiLogs** — sample AI chat history
+7. **SeedNotificationPreferences** — per-user notification settings
+8. **SeedNotifications** — sample budget/goal notifications
+9. **SeedActivityLogs** — sample activity history
 
 ## Seeded Data Summary
 
@@ -56,11 +59,11 @@ Seeders run in registration order to satisfy FK constraints:
 
 ### Transactions (~1,200 total)
 
-- **Period:** Nov 2025 – May 2026 (7 months)
+- **Period:** rolling 7 months, ending in the current month (recomputed from `time.Now()` each run)
 - **Income categories:** Gaji, Freelance, Bonus
 - **Expense categories:** Makanan & Minuman, Transportasi, Utilitas, Hiburan & Rekreasi, Belanja, Kesehatan, Pendidikan, Tagihan
 - **Pattern:** Salary on 25th, daily food/transport, monthly utility bills, occasional other expenses
-- **Deterministic:** same seed data every run (math/rand seeded by user index)
+- **Deterministic:** same seed data every run for a given calendar day (math/rand seeded by user index)
 
 Monthly salary per user (IDR):
 - Budi: ~Rp 10,000,000
@@ -71,7 +74,7 @@ Monthly salary per user (IDR):
 
 ### Budgets (21 total)
 
-Monthly budgets for May 2026 + yearly budgets for 2026.
+Recurring monthly budgets (no fixed month/year, apply every month) + yearly budgets scoped to the current year.
 Categories: Makanan & Minuman, Transportasi, Hiburan & Rekreasi, Belanja, Utilitas, Kesehatan, Pendidikan, Tagihan, Peralatan Kerja, Investasi.
 
 ### Goals (12 total, 1 COMPLETED)
@@ -89,6 +92,18 @@ Each user has: monthly income, fixed expenses, current savings, debt, employment
 ### AI Logs (15 total)
 
 3 sample chat Q&A entries per user.
+
+### Notification Preferences (5)
+
+One row per user (budget alerts, goal reminders, anomaly alerts, weekly summary, push), upserted on conflict.
+
+### Notifications (14 total)
+
+Sample BUDGET_WARNING / BUDGET_EXCEEDED / GOAL_REMINDER entries per user, mixed read/unread.
+
+### Activity Logs (~25 total)
+
+Sample CREATE/UPDATE/DELETE history entries per user (transactions, budgets, goals).
 
 ## Common Workflows
 
@@ -132,9 +147,12 @@ db/seeder/
 │   ├── users.go             Inserts users with bcrypt-hashed passwords
 │   ├── financial_profiles.go Upserts financial profiles + goal tags
 │   ├── transactions.go      Inserts generated transaction history
-│   ├── budgets.go           Inserts monthly/yearly budgets
+│   ├── budgets.go           Inserts recurring monthly / yearly budgets
 │   ├── goals.go             Inserts financial goals
-│   └── ai_logs.go           Inserts sample AI chat logs
+│   ├── ai_logs.go           Inserts sample AI chat logs
+│   ├── notification_preferences.go Upserts per-user notification settings
+│   ├── notifications.go     Inserts sample notifications
+│   └── activity_logs.go     Inserts sample activity history
 └── README.md
 ```
 

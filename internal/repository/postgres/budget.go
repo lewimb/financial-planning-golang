@@ -27,16 +27,17 @@ func (r *budgetRepository) GetAll(userID int, category, month, year string) ([]d
 		idx++
 	}
 	if year != "" {
-		query += fmt.Sprintf(" AND year = $%d", idx)
+		// MONTHLY budgets recur every month/year and are never excluded by
+		// this filter; only YEARLY budgets are scoped to a specific year.
+		query += fmt.Sprintf(" AND (period = 'MONTHLY' OR year = $%d)", idx)
 		args = append(args, year)
 		idx++
 	}
-	if month != "" {
-		query += fmt.Sprintf(" AND month = $%d", idx)
-		args = append(args, month)
-		idx++
-	}
-	_ = idx
+	// month is intentionally not filterable here: MONTHLY budgets recur (no
+	// stored month), and YEARLY budgets never had one either — every row's
+	// month column is NULL, so a "month = $n" filter would always exclude
+	// everything.
+	_ = month
 
 	query += " ORDER BY created_at DESC"
 
