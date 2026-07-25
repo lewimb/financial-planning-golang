@@ -41,6 +41,10 @@ func (h *NotificationHandler) MarkRead(c *gin.Context) {
 		return
 	}
 	if err := h.uc.MarkRead(id, userID); err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			c.JSON(404, gin.H{"error": "notification not found"})
+			return
+		}
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}

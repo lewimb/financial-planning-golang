@@ -31,7 +31,7 @@ func (r *notificationRepository) GetByUserID(userID int, unreadOnly bool) ([]dom
 	}
 	defer rows.Close()
 
-	var notifs []domain.Notification
+	notifs := []domain.Notification{}
 	for rows.Next() {
 		var n domain.Notification
 		if err := rows.Scan(&n.ID, &n.UserID, &n.Type, &n.Title, &n.Message,
@@ -53,12 +53,22 @@ func (r *notificationRepository) Create(userID int, notifType, title, message st
 }
 
 func (r *notificationRepository) MarkRead(id, userID int) error {
-	_, err := r.db.Exec(`
+	result, err := r.db.Exec(`
 		UPDATE notifications SET is_read = TRUE
 		WHERE id = $1 AND user_id = $2`,
 		id, userID,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
 }
 
 func (r *notificationRepository) MarkAllRead(userID int) error {
