@@ -13,6 +13,7 @@ import (
 )
 
 var ErrChatUnavailable = errors.New("AI service unavailable")
+var ErrChatOverloaded = errors.New("AI service overloaded")
 
 // --- Gemini Client ---
 
@@ -57,6 +58,9 @@ func (g *GeminiClient) Call(ctx context.Context, prompt string) (string, error) 
 					continue
 				}
 			}
+			if isOverloadedErr(err) {
+				return "", fmt.Errorf("%w: %v", ErrChatOverloaded, err)
+			}
 			return "", fmt.Errorf("%w: %v", ErrChatUnavailable, err)
 		}
 
@@ -77,6 +81,9 @@ func (g *GeminiClient) StreamCall(ctx context.Context, prompt string, onChunk fu
 			if isRateLimitErr(err) {
 				return fmt.Errorf("%w: rate limit exceeded", ErrChatUnavailable)
 			}
+			if isOverloadedErr(err) {
+				return fmt.Errorf("%w: %v", ErrChatOverloaded, err)
+			}
 			return fmt.Errorf("%w: %v", ErrChatUnavailable, err)
 		}
 		if text := chunk.Text(); text != "" {
@@ -94,6 +101,19 @@ func isRateLimitErr(err error) bool {
 	return strings.Contains(msg, "429") ||
 		strings.Contains(msg, "rate limit") ||
 		strings.Contains(msg, "quota")
+}
+
+// isOverloadedErr matches Gemini's transient "model is currently experiencing
+// high demand" 503/UNAVAILABLE responses, distinct from rate limiting.
+func isOverloadedErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "503") ||
+		strings.Contains(msg, "unavailable") ||
+		strings.Contains(msg, "overloaded") ||
+		strings.Contains(msg, "high demand")
 }
 
 // --- ChatUseCase ---

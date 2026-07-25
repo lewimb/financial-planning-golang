@@ -29,8 +29,18 @@ func (h *ChatHandler) Ask(c *gin.Context) {
 
 	reply, err := h.uc.Ask(c.Request.Context(), userID, req.Message)
 	if err != nil {
+		if errors.Is(err, usecase.ErrChatOverloaded) {
+			c.JSON(http.StatusServiceUnavailable, gin.H{
+				"error":  "AI service is currently overloaded",
+				"reason": "overloaded",
+			})
+			return
+		}
 		if errors.Is(err, usecase.ErrChatUnavailable) {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "AI service unavailable"})
+			c.JSON(http.StatusServiceUnavailable, gin.H{
+				"error":  "AI service unavailable",
+				"reason": "unavailable",
+			})
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
@@ -78,8 +88,10 @@ func (h *ChatHandler) AskStream(c *gin.Context) {
 		c.Writer.Flush()
 	})
 	if streamErr != nil {
-		if errors.Is(streamErr, usecase.ErrChatUnavailable) {
-			c.SSEvent("error", gin.H{"error": "AI service unavailable"})
+		if errors.Is(streamErr, usecase.ErrChatOverloaded) {
+			c.SSEvent("error", gin.H{"error": "AI service is currently overloaded", "reason": "overloaded"})
+		} else if errors.Is(streamErr, usecase.ErrChatUnavailable) {
+			c.SSEvent("error", gin.H{"error": "AI service unavailable", "reason": "unavailable"})
 		} else {
 			c.SSEvent("error", gin.H{"error": "stream failed"})
 		}
