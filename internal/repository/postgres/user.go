@@ -17,16 +17,16 @@ func NewUserRepository(db *sql.DB) domain.UserRepository {
 }
 
 func (r *userRepository) GetAll() ([]domain.UserResponse, error) {
-	rows, err := r.db.Query("SELECT id,email,name,created_at,deleted_at,password from users WHERE deleted_at IS NULL")
+	rows, err := r.db.Query("SELECT id,email,name,created_at,deleted_at from users WHERE deleted_at IS NULL")
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var users []domain.UserResponse
+	users := []domain.UserResponse{}
 	for rows.Next() {
 		var u domain.UserResponse
-		if err := rows.Scan(&u.ID, &u.Email, &u.Name, &u.CreatedAt, &u.DeletedAt, &u.Password); err != nil {
+		if err := rows.Scan(&u.ID, &u.Email, &u.Name, &u.CreatedAt, &u.DeletedAt); err != nil {
 			return nil, err
 		}
 		users = append(users, u)
@@ -48,10 +48,10 @@ func (r *userRepository) FindByEmail(email string) (*domain.User, error) {
 func (r *userRepository) GetByID(id int) (*domain.UserResponse, error) {
 	var u domain.UserResponse
 	err := r.db.QueryRow(`
-		SELECT id, email, name, created_at, deleted_at, password,
+		SELECT id, email, name, created_at, deleted_at,
 		       first_name, last_name, phone
 		FROM users WHERE id = $1 AND deleted_at IS NULL`, id,
-	).Scan(&u.ID, &u.Email, &u.Name, &u.CreatedAt, &u.DeletedAt, &u.Password,
+	).Scan(&u.ID, &u.Email, &u.Name, &u.CreatedAt, &u.DeletedAt,
 		&u.FirstName, &u.LastName, &u.Phone)
 	if err != nil {
 		return nil, err

@@ -21,7 +21,6 @@ type UserResponse struct {
 	Phone     *string    `json:"phone,omitempty"`
 	CreatedAt time.Time  `json:"created_at"`
 	DeletedAt *time.Time `json:"deleted_at,omitempty"`
-	Password  string     `json:"password"`
 }
 
 type UserProfileResponse struct {
