@@ -83,14 +83,18 @@ var utilityTemplates = []txTemplate{
 	{category: "Utilitas", description: "Beli gas LPG 3kg", min: 20_000, max: 30_000, isRecurring: true, interval: "MONTHLY"},
 }
 
-// Generate produces deterministic transaction history for the given user index.
-// Covers 7 months: Nov 2025 → May 2026 (current date 2026-05-19).
+// Generate produces deterministic transaction history for the given user index,
+// covering the 7 months up to and including today (whatever "today" is when the
+// seeder runs), so current-month features (dashboard, budget usage, reports)
+// always have data for the actual current month.
 func Generate(userIndex int) []TX {
 	rng := rand.New(rand.NewSource(int64(userIndex*99_991 + 12_345)))
 	var result []TX
 
 	base := baseSalaries[userIndex]
-	now := time.Date(2026, 5, 19, 0, 0, 0, 0, time.UTC)
+	n := time.Now().UTC()
+	now := time.Date(n.Year(), n.Month(), n.Day(), 0, 0, 0, 0, time.UTC)
+	historyStart := time.Date(now.AddDate(0, -6, 0).Year(), now.AddDate(0, -6, 0).Month(), 1, 0, 0, 0, 0, time.UTC)
 
 	for monthsBack := 6; monthsBack >= 0; monthsBack-- {
 		ref := now.AddDate(0, -monthsBack, 0)
@@ -139,6 +143,21 @@ func Generate(userIndex int) []TX {
 			})
 		}
 
+		// Budi (userIndex 0) gets a deliberately smooth, gently-trending expense
+		// curve instead of the fully-random per-transaction amounts used below.
+		// The random approach makes every day's total swing so widely (food
+		// alone ranges Rp12k–400k, transport Rp3.5k–180k, plus random extras)
+		// that Prophet's uncertainty interval ends up wider than the prediction
+		// itself on every forecast day — which floors forecast confidence at 0%
+		// regardless of how much history exists. See budiDailyExpense.
+		if userIndex == 0 {
+			for day := 1; day <= lastDay; day++ {
+				d := date(monthStart.Year(), monthStart.Month(), day)
+				result = append(result, budiDailyExpense(rng, d, now, historyStart)...)
+			}
+			continue
+		}
+
 		// EXPENSE — utility bills on 1st–5th
 		for _, tpl := range utilityTemplates {
 			// Eko (student) skips utilities (lives in kos, included in rent)
@@ -184,6 +203,66 @@ func Generate(userIndex int) []TX {
 	}
 
 	return result
+}
+
+// budiDailyExpense produces one day of expenses for Budi (userIndex 0) whose
+// TOTAL follows a smooth curve — steep-but-decelerating-to-today growth from
+// historyStart to now, a weekend bump, and only +/-6% random noise — instead
+// of drawing every line item independently from wide template ranges.
+// Categories still rotate through the normal templates for realistic
+// descriptions/breakdowns, but the day's total is deliberately low-noise so
+// Prophet's fitted uncertainty band stays tighter than the prediction
+// (nonzero forecast confidence).
+//
+// The curve is anchored so TODAY lands close to the ~230k/day the old fully-
+// random generator averaged (keeping current-month budgets/dashboard/health/
+// recommendations — which only ever look at the current month — consistent
+// with the rest of the seed data), while 6-months-ago is deliberately much
+// lower. That large start-to-end ratio is needed only for Prophet's own
+// trend detection: its changepoint regularization damps a fitted slope so
+// much that even dramatic growth washes out to <5% swing over a 30-day
+// forecast window unless the underlying ratio is this steep.
+func budiDailyExpense(rng *rand.Rand, d, now, historyStart time.Time) []TX {
+	const dailyBaseline = 230_000.0
+
+	totalSpanDays := now.Sub(historyStart).Hours() / 24
+	if totalSpanDays <= 0 {
+		totalSpanDays = 1
+	}
+	progress := d.Sub(historyStart).Hours() / 24 / totalSpanDays // 0 (oldest) .. 1 (newest)
+	if progress < 0 {
+		progress = 0
+	}
+	growth := 0.07 + 0.93*progress // today (progress=1) lands at dailyBaseline itself;
+	// 6 months ago is ~14x lower — same ratio empirically needed to clear Prophet's
+	// 5% trend threshold, just anchored at the realistic end instead of the low end.
+
+	weekdayBump := 1.0
+	if d.Weekday() == time.Saturday || d.Weekday() == time.Sunday {
+		weekdayBump = 1.25
+	}
+
+	noise := 0.94 + rng.Float64()*0.12 // +/-6%
+
+	dailyTotal := dailyBaseline * growth * weekdayBump * noise
+
+	foodAmt := dailyTotal * 0.55
+	transportAmt := dailyTotal * 0.30
+	otherAmt := dailyTotal - foodAmt - transportAmt
+
+	foodTpl := foodTemplates[rng.Intn(len(foodTemplates))]
+	transportTpl := transportTemplates[rng.Intn(len(transportTemplates))]
+
+	otherPool := make([]txTemplate, 0, len(otherTemplates)+len(utilityTemplates))
+	otherPool = append(otherPool, otherTemplates...)
+	otherPool = append(otherPool, utilityTemplates...)
+	otherTpl := otherPool[rng.Intn(len(otherPool))]
+
+	return []TX{
+		{Amount: int(foodAmt), Category: foodTpl.category, Type: "EXPENSE", Date: d, Description: foodTpl.description},
+		{Amount: int(transportAmt), Category: transportTpl.category, Type: "EXPENSE", Date: d, Description: transportTpl.description},
+		{Amount: int(otherAmt), Category: otherTpl.category, Type: "EXPENSE", Date: d, Description: otherTpl.description},
+	}
 }
 
 func fromTemplate(rng *rand.Rand, tpl txTemplate, d time.Time) TX {
