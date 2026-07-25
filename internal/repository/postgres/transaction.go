@@ -68,7 +68,7 @@ func (r *transactionRepository) GetByUserID(userID, limit, offset int, year, mon
 	}
 	defer rows.Close()
 
-	var transactions []domain.TransactionResponse
+	transactions := []domain.TransactionResponse{}
 	for rows.Next() {
 		var t domain.TransactionResponse
 		if err := rows.Scan(&t.ID, &t.Amount, &t.Category, &t.Type, &t.Date, &t.Description, &t.IsRecurring, &t.RecurrenceInterval); err != nil {
@@ -179,7 +179,7 @@ func (r *transactionRepository) GetMonthlySummary(userID int, months int) ([]dom
 	}
 	defer rows.Close()
 
-	var items []domain.MonthlySummaryItem
+	items := []domain.MonthlySummaryItem{}
 	for rows.Next() {
 		var item domain.MonthlySummaryItem
 		if err := rows.Scan(&item.Month, &item.Year, &item.Income, &item.Expense); err != nil {
@@ -213,7 +213,7 @@ func (r *transactionRepository) GetYearlySummary(userID, year int) ([]domain.Mon
 	}
 	defer rows.Close()
 
-	var items []domain.MonthlySummaryItem
+	items := []domain.MonthlySummaryItem{}
 	for rows.Next() {
 		var item domain.MonthlySummaryItem
 		if err := rows.Scan(&item.Month, &item.Income, &item.Expense); err != nil {
@@ -245,7 +245,7 @@ func (r *transactionRepository) GetCategoryBreakdownDetailed(userID, month, year
 	}
 	defer rows.Close()
 
-	var items []domain.CategoryBreakdownItem
+	items := []domain.CategoryBreakdownItem{}
 	var grandTotal float64
 	for rows.Next() {
 		var item domain.CategoryBreakdownItem

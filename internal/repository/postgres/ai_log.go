@@ -35,7 +35,7 @@ func (r *aiLogRepository) GetByUserID(userID int) ([]domain.AiLog, error) {
 	}
 	defer rows.Close()
 
-	var logs []domain.AiLog
+	logs := []domain.AiLog{}
 	for rows.Next() {
 		var l domain.AiLog
 		if err := rows.Scan(&l.ID, &l.UserID, &l.Question, &l.Response, &l.CreatedAt); err != nil {

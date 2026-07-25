@@ -48,7 +48,7 @@ func (r *activityLogRepository) GetByUserID(userID int, limit, offset int) ([]do
 	}
 	defer rows.Close()
 
-	var logs []domain.ActivityLog
+	logs := []domain.ActivityLog{}
 	for rows.Next() {
 		var l domain.ActivityLog
 		if err := rows.Scan(&l.ID, &l.UserID, &l.Action, &l.EntityType, &l.EntityID, &l.Description, &l.CreatedAt); err != nil {

@@ -7,7 +7,7 @@ type ActivityLog struct {
 	UserID      int       `json:"user_id"`
 	Action      string    `json:"action"`
 	EntityType  string    `json:"entity_type"`
-	EntityID    *int      `json:"entity_id,omitempty"`
+	EntityID    *int      `json:"entity_id"`
 	Description string    `json:"description"`
 	CreatedAt   time.Time `json:"created_at"`
 }
