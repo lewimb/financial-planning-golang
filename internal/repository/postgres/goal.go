@@ -25,7 +25,7 @@ func (r *goalRepository) GetAll(userID int, active bool) ([]domain.GoalResponse,
 	}
 	defer rows.Close()
 
-	var goals []domain.GoalResponse
+	goals := []domain.GoalResponse{}
 	for rows.Next() {
 		var g domain.GoalResponse
 		if err := rows.Scan(&g.Id, &g.Name, &g.TargetAmount, &g.CurrentAmount, &g.Status, &g.Deadline, &g.Description, &g.CreatedAt); err != nil {
@@ -86,7 +86,7 @@ func (r *goalRepository) GetUpcomingMilestones(userID int) ([]domain.GoalRespons
 	}
 	defer rows.Close()
 
-	var milestones []domain.GoalResponse
+	milestones := []domain.GoalResponse{}
 	for rows.Next() {
 		var m domain.GoalResponse
 		if err := rows.Scan(&m.Id, &m.Name, &m.Description, &m.TargetAmount, &m.CurrentAmount, &m.Deadline, &m.CreatedAt, &m.Status); err != nil {
@@ -118,7 +118,7 @@ func (r *goalRepository) Create(userID int, req domain.CreateGoalRequest) error 
 }
 
 func (r *goalRepository) Update(id, userID int, req domain.CreateGoalRequest) error {
-	_, err := r.db.Exec(`
+	result, err := r.db.Exec(`
 		UPDATE goals SET
 			name = $1,
 			target_amount = CASE WHEN $2 > current_amount THEN $2 ELSE target_amount END,
@@ -128,7 +128,17 @@ func (r *goalRepository) Update(id, userID int, req domain.CreateGoalRequest) er
 			updated_at = NOW()
 		WHERE id = $5 AND user_id = $6
 	`, req.Name, req.TargetAmount, req.Description, req.Deadline, id, userID)
-	return err
+	if err != nil {
+		return err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
 }
 
 func (r *goalRepository) Delete(id, userID int) error {

@@ -105,15 +105,27 @@ func (uc *GoalUseCase) Contribute(id, userID, amount int) error {
 	if amount <= 0 {
 		return errors.New("contribution must be greater than 0")
 	}
+	goal, err := uc.repo.GetByID(id, userID)
+	if err != nil {
+		log.Printf("goal: Contribute GetByID id=%d userID=%d: %v", id, userID, err)
+		return err
+	}
+	totalCommitted, err := uc.repo.GetSavingsTotal(userID)
+	if err != nil {
+		log.Printf("goal: Contribute GetSavingsTotal userID=%d: %v", userID, err)
+		return err
+	}
+	committedElsewhere := totalCommitted - float64(goal.CurrentAmount)
 	net, err := uc.txRepo.GetNetSavings(userID)
 	if err != nil {
 		log.Printf("goal: Contribute GetNetSavings userID=%d: %v", userID, err)
 		return err
 	}
-	if net <= 0 {
+	available := net - committedElsewhere
+	if available <= 0 {
 		return errors.New("cannot add contributions: no net savings")
 	}
-	if amount > int(net) {
+	if float64(amount) > available {
 		return errors.New("contribution exceeds available savings")
 	}
 	if err := uc.repo.Contribute(id, userID, amount); err != nil {
